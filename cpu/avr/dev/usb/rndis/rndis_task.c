@@ -90,7 +90,7 @@
 //! Temp data buffer when adding RNDIS headers
 uint8_t usb_eth_data_buffer[64];
 
-uint64_t usb_ethernet_addr = 0x010000000002ULL;
+uint64_t usb_ethernet_addr = 0x020000000002ULL;
 
 //_____ D E C L A R A T I O N S ____________________________________________
 
@@ -332,6 +332,53 @@ usb_eth_get_mac_address(uint8_t dest[6]) {
 void
 usb_eth_set_mac_address(const uint8_t src[6]) {
 	memcpy(&usb_ethernet_addr,src,6);
+}
+
+#include "watchdog.h"
+
+void
+usb_eth_reset() {
+	rndis_state = rndis_uninitialized;
+}
+
+void
+usb_eth_switch_to_windows_mode() {
+	Usb_detach();
+
+	usb_mode = rndis_debug;
+	rndis_state = 	rndis_uninitialized;
+
+	// Reset the USB configuration
+	usb_user_endpoint_init(0);
+
+	Leds_off();
+
+	// Wait a few seconds, displaying
+	// a pretty LED light pattern.
+	int i;
+	for(i = 0; i < 5; i++) {
+		Led0_on();
+		_delay_ms(100);
+		watchdog_periodic();
+		Led0_off();
+		Led1_on();
+		_delay_ms(100);
+		watchdog_periodic();
+		Led1_off();
+		Led2_on();
+		_delay_ms(100);
+		watchdog_periodic();
+		Led2_off();
+		Led3_on();
+		_delay_ms(100);
+		watchdog_periodic();
+		Led3_off();
+	}
+
+	Leds_off();
+
+	//Attach USB
+	Usb_attach();
 }
 
 /** @}  */
