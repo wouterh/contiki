@@ -46,13 +46,10 @@
 #include "net/rime/rimeaddr.h"
 
 rimeaddr_t rimeaddr_node_addr;
-#if RIMEADDR_SIZE == 2
-const rimeaddr_t rimeaddr_null = { { 0, 0 } };
-#else /*RIMEADDR_SIZE == 2*/
-#if RIMEADDR_SIZE == 8
-const rimeaddr_t rimeaddr_null = { { 0, 0, 0, 0, 0, 0, 0, 0 } };
-#endif /*RIMEADDR_SIZE == 8*/
-#endif /*RIMEADDR_SIZE == 2*/
+/*	Globals are always initialized to zero, so
+**	there is no need to explicitly define this to be zero.
+*/
+const rimeaddr_t rimeaddr_null;	
 
 
 /*---------------------------------------------------------------------------*/
