@@ -107,8 +107,13 @@ chksum(u16_t sum, const u8_t *data, u16_t len)
 static u16_t
 upper_layer_chksum(u8_t proto)
 {
-  u16_t upper_layer_len;
-  u16_t sum;
+  /* Added volatile keyword here because AVR targets seem to
+   * have problems with this function otherwise. The origin of
+   * these problems should be investigated. See:
+   * <http://sourceforge.net/apps/mantisbt/contiki/view.php?id=3>
+   */
+  volatile static u16_t upper_layer_len;
+  volatile static u16_t sum;
   
   upper_layer_len = (((u16_t)(UIP_IP_BUF->len[0]) << 8) + UIP_IP_BUF->len[1]) ;
   
