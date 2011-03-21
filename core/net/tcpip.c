@@ -546,6 +546,18 @@ tcpip_input(void)
 #endif /*UIP_CONF_IPV6*/
 }
 /*---------------------------------------------------------------------------*/
+#if UIP_CONF_LOOPBACK_INTERFACE
+static void
+loopback_packet(void) {
+
+	// TODO: The following will probably blow the stack
+	// on embedded devices. An alternative should be investigated.
+	PRINTF("looping packet back...\n");
+	uip_input();
+	PRINTF("...done looping the packet\n");
+}
+#endif
+/*---------------------------------------------------------------------------*/
 #if UIP_CONF_IPV6
 void
 tcpip_ipv6_output(void)
@@ -567,6 +579,12 @@ tcpip_ipv6_output(void)
     uip_len = 0;
     return;
   }
+#if UIP_CONF_LOOPBACK_INTERFACE
+  if(uip_is_addr_loopback(&UIP_IP_BUF->destipaddr)){
+	loopback_packet();
+    return;
+  }
+#endif
   if(!uip_is_addr_mcast(&UIP_IP_BUF->destipaddr)) {
     /* Next hop determination */
     nbr = NULL;
