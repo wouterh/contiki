@@ -117,50 +117,6 @@ uint8_t usb_eth_ready_for_next_packet() {
 	return 1;
 }
 
-void rxtx_led_update(void)
-{
-	// turn off LED's if necessary
-	if (led1_timer) {
-		led1_timer--;
-		if(led1_timer&(1<<2))
-			Led1_on();
-		else
-			Led1_off();
-	}
-	else
-		Led1_off();
-
-	if (led2_timer) {
-		led2_timer--;
-		if(led2_timer&(1<<2))
-			Led2_on();
-		else
-			Led2_off();
-	}
-	else
-		Led2_off();
-}
-
-/**
-    @brief This will enable the RX_START LED for a period
-*/
-void rx_start_led(void)
-{
-	led1_timer|=(1<<3);
-	if(((led1_timer-1)&(1<<2)))
-		Led1_on();
-}
-
-/**
-    @brief This will enable the TRX_END LED for a period
-*/
-void tx_end_led(void)
-{
-	led2_timer|=(1<<3);
-	if(((led2_timer-1)&(1<<2)))
-		Led1_on();
-}
-
 #if USB_ETH_CONF_MASS_STORAGE_FALLBACK
 static void
 usb_eth_setup_timeout_fallback_check() {
@@ -247,42 +203,52 @@ PROCESS_THREAD(usb_eth_process, ev, data_proc)
 	PROCESS_BEGIN();
 
 	while(1) {
-		rxtx_led_update();
+		if(usb_mode == mass_storage) {
+			etimer_set(&et, CLOCK_SECOND);
+			PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+			continue;
+		}
 
 #if USB_ETH_CONF_MASS_STORAGE_FALLBACK
 		usb_eth_setup_timeout_fallback_check();
 #endif
 		
+		if(!Is_device_enumerated()) {
+			usb_eth_reset();
+			while(!Is_device_enumerated()) {
+				etimer_set(&et, CLOCK_SECOND);
+				PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et) || Is_device_enumerated());
+			}
+			USB_ETH_HOOK_INACTIVE();
+		}
+
 		switch(usb_configuration_nb) {
 			case USB_CONFIG_RNDIS_DEBUG:
 			case USB_CONFIG_RNDIS:
-				if(Is_device_enumerated()) {
-					if(rndis_process()) {
-						etimer_set(&et, CLOCK_SECOND/80);
-					} else {
-						Led0_toggle();
-						etimer_set(&et, CLOCK_SECOND/8);
-					}
+				if(rndis_process()) {
+					USB_ETH_HOOK_READY();
+					etimer_set(&et, CLOCK_SECOND/80);
+				} else {
+					USB_ETH_HOOK_INACTIVE();
+					etimer_set(&et, CLOCK_SECOND/8);
 				}
 				break;
 			case USB_CONFIG_EEM:
-				if(Is_device_enumerated())
-					cdc_eem_process();
+				cdc_eem_process();
+				USB_ETH_HOOK_READY();
 				etimer_set(&et, CLOCK_SECOND/80);
 				break;
 			case USB_CONFIG_ECM:
 			case USB_CONFIG_ECM_DEBUG:
-				if(Is_device_enumerated()) {
-					if(cdc_ecm_process()) {
-						etimer_set(&et, CLOCK_SECOND/80);
-					} else {
-						Led0_toggle();
-						etimer_set(&et, CLOCK_SECOND/8);
-					}
+				if(cdc_ecm_process()) {
+					USB_ETH_HOOK_READY();
+					etimer_set(&et, CLOCK_SECOND/80);
+				} else {
+					USB_ETH_HOOK_INACTIVE();
+					etimer_set(&et, CLOCK_SECOND/8);
 				}
 				break;
 			default:
-				Led0_toggle();
 				etimer_set(&et, CLOCK_SECOND/4);
 				break;
 		}
