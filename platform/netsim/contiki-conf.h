@@ -132,8 +132,6 @@ typedef unsigned long clock_time_t;
 
 #define UIP_CONF_LOGGING         1
 
-#define UIP_CONF_UDP_CHECKSUMS   0
-
 #define LOADER_CONF_ARCH "loader/dlloader.h"
 
 #endif /* __CONTIKI_CONF_H__ */
