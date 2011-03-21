@@ -50,7 +50,7 @@
 #include "sys/etimer.h"
 #include "sys/process.h"
 
-static struct etimer *timerlist;
+struct etimer *timerlist;
 static clock_time_t next_expiration;
 
 PROCESS(etimer_process, "Event timer");
