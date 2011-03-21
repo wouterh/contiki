@@ -1,7 +1,5 @@
 
 #include <stdbool.h>
-//#include <sys/param.h>
-#define MIN(a,b) ((a) < (b) ? (a) : (b))
 #include <avr/io.h>
 #include "settings.h"
 #include "dev/eeprom.h"
@@ -11,6 +9,10 @@
 #include <avr/wdt.h>
 #include "contiki.h"
 
+#ifndef MIN
+#define MIN(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
+#endif
+
 #ifndef SETTINGS_TOP_ADDR
 #define SETTINGS_TOP_ADDR	(E2END-4)	//!< Defaults to end of EEPROM, minus 4 bytes for avrdude erase count
 #endif
@@ -18,6 +20,13 @@
 #ifndef SETTINGS_MAX_SIZE
 #define SETTINGS_MAX_SIZE	(1024)	//!< Defaults to 1KB
 #endif
+
+/** This macro will protect the following code from interrupts.*/
+#define AVR_ENTER_CRITICAL_REGION( ) {uint8_t volatile saved_sreg = SREG; cli( )
+
+/** This macro must always be used in conjunction with AVR_ENTER_CRITICAL_REGION
+    so that interrupts are enabled again.*/
+#define AVR_LEAVE_CRITICAL_REGION( ) SREG = saved_sreg;}
 
 //#pragma mark -
 //#pragma mark Private Functions
@@ -239,6 +248,7 @@ settings_set(settings_key_t key,const unsigned char* value,size_t value_size) {
 	
 	if(value_size!=settings_get_value_length_(current_item)) {
 		// Requires the settings store to be shifted. Currently unimplemented.
+		ret = SETTINGS_STATUS_UNIMPLEMENTED;
 		goto bail;
 	}
 	
@@ -266,10 +276,12 @@ settings_delete(settings_key_t key,uint8_t index) {
 void
 settings_wipe(void) {
 	size_t i = SETTINGS_TOP_ADDR-SETTINGS_MAX_SIZE;
+	AVR_ENTER_CRITICAL_REGION();
 	for(;i<=SETTINGS_TOP_ADDR;i++) {
 		eeprom_write_byte((uint8_t*)i,0xFF);
 		wdt_reset();
 	}
+	AVR_LEAVE_CRITICAL_REGION();
 }
 
 
