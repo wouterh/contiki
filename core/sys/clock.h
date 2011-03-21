@@ -93,6 +93,13 @@ CCIF clock_time_t clock_time(void);
 void clock_delay(unsigned int);
 
 /**
+ * Sleeps until the either the given duration has passed
+ * or an interrupt has been handled. Useful for automatically
+ * sleeping the microcontroller.
+ */
+void clock_sleep_with_max_duration(unsigned int max_duration);
+
+/**
  * A second, measured in system clock time.
  *
  * \hideinitializer
