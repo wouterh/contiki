@@ -127,7 +127,6 @@ typedef unsigned long rtimer_clock_t;
 #define UIP_CONF_BYTE_ORDER           UIP_LITTLE_ENDIAN
 #define UIP_CONF_TCP_SPLIT            0
 #define UIP_CONF_LOGGING              0
-#define UIP_CONF_UDP_CHECKSUMS        0
 #define UIP_CONF_BROADCAST            1
 
 #define UIP_CONF_UDP                  1
