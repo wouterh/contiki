@@ -1935,7 +1935,7 @@ CCIF extern uip_lladdr_t uip_lladdr;
    (((a)->u16[4]) == 0) &&                       \
    (((a)->u16[5]) == 0) &&                       \
    (((a)->u16[6]) == 0) &&                       \
-   (((a)->u16[7]) == 1))
+   (((a)->u16[7]) == UIP_HTONS(1)))
 /**
  * \brief Is IPv6 address a the unspecified address
  * a is of type uip_ipaddr_t
