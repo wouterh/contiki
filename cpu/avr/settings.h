@@ -15,6 +15,9 @@ typedef uint16_t settings_key_t;
 #define SETTINGS_KEY_PAN_ADDR		'P'*256+'A'	//!< Value always 2 bytes long
 #define SETTINGS_KEY_AES128KEY		'S'*256+'K'	//!< Value always 16 bytes long
 #define SETTINGS_KEY_AES128ENABLED	'S'*256+'E'	//!< Value always 16 bytes long
+#define SETTINGS_KEY_HOSTNAME		'HN'	//!< Variable Length
+#define SETTINGS_KEY_DOMAINNAME		'DN'	//!< Variable Length
+#define SETTINGS_KEY_RDC_INDEX		'RD'	//!< Always 1 byte long
 
 typedef enum {
 	SETTINGS_STATUS_OK=0,
@@ -42,6 +45,26 @@ extern settings_status_t settings_delete(settings_key_t key,uint8_t index);
 
 //#pragma mark -
 //#pragma mark Inline convenience functions
+
+static inline const char*
+settings_get_cstr(settings_key_t key,uint8_t index,char* c_str,size_t c_str_size) {
+	c_str_size--;
+	if(settings_get(key,index,(unsigned char*)c_str,&c_str_size)==SETTINGS_STATUS_OK) {
+		// Zero terminate.
+		c_str[c_str_size] = 0;
+	} else {
+		c_str = NULL;
+	}
+	return c_str;
+}
+
+static inline bool
+settings_get_bool_with_default(settings_key_t key,uint8_t index, bool default_value) {
+	uint8_t ret = default_value;
+	size_t sizeof_uint8 = sizeof(uint8_t);
+	settings_get(key,index,(unsigned char*)&ret,&sizeof_uint8);
+	return (bool)ret;
+}
 
 static inline uint8_t
 settings_get_uint8(settings_key_t key,uint8_t index) {
