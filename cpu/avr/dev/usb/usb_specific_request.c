@@ -361,7 +361,6 @@ void usb_user_endpoint_init(U8 conf_nb)
 			break;	
 #endif
 	}
-	Led0_on();
 }
 
 #if USB_CONF_SERIAL

@@ -868,7 +868,6 @@ uint8_t rndis_process(void)
 #endif
 
 	//Connected!
-	Led0_on();
 
 	Usb_select_endpoint(RX_EP);
 

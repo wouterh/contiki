@@ -163,7 +163,6 @@ cdc_ecm_notify_connection_speed_change(uint32_t upstream,uint32_t downstream) {
 
 void cdc_ecm_set_active(uint8_t value) {
 	if(value!=usb_eth_is_active) {
-		Led3_on();
 
 		usb_eth_is_active = value;
 		cdc_ecm_notify_network_connection(value);
@@ -213,7 +212,6 @@ cdc_ecm_process(void) {
 	}
 
 	//Connected!
-	Led0_on();
 
 	if(Is_usb_read_enabled()) {
 		uint16_t bytecounter;
