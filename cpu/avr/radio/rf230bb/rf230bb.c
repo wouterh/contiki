@@ -115,11 +115,8 @@ struct timestamp {
 #define FOOTER1_CORRELATION 0x7f
 
 /* Leave radio on for testing low power protocols */
-#if JACKDAW
+#ifndef RADIOALWAYSON
 #define RADIOALWAYSON 1
-#else
-#define RADIOALWAYSON 0
-#define RADIOSLEEPSWHENOFF 1
 #endif
 
 //RS232 delays will cause 6lowpan fragment overruns!
@@ -1233,6 +1230,11 @@ rf230_read(void *buf, unsigned short bufsize)
 if (RF230_receive_on) {
 #endif
 
+  PRINTF("rf230_read: %u bytes lqi %u crc %u\n",rxframe.length,rxframe.lqi,rxframe.crc);
+#if DEBUG
+    for (len=0;len<rxframe.length;len++) PRINTF(" %x",rxframe.data[len]);PRINTF("\n");
+#endif
+
 #if RF230_CONF_TIMESTAMPS
   if(interrupt_time_set) {
     rf230_time_of_arrival = interrupt_time;
@@ -1256,13 +1258,14 @@ if (RF230_receive_on) {
 
 // GET_LOCK();
 
-//if(len > RF230_MAX_PACKET_LEN) {
   if(len > RF230_MAX_TX_FRAME_LENGTH) {
     /* Oops, we must be out of sync. */
     DEBUGFLOW('y');
     flushrx();
     RIMESTATS_ADD(badsynch);
-//    RELEASE_LOCK();
+#if RADIOSTATS
+    RF230_receivefail++;
+#endif
     return 0;
   }
 
@@ -1271,7 +1274,9 @@ if (RF230_receive_on) {
     PRINTF("len <= AUX_LEN\n");
     flushrx();
     RIMESTATS_ADD(tooshort);
- //   RELEASE_LOCK();
+#if RADIOSTATS
+    RF230_receivefail++;
+#endif
     return 0;
   }
 
@@ -1280,7 +1285,9 @@ if (RF230_receive_on) {
     PRINTF("len - AUX_LEN > bufsize\n");
     flushrx();
     RIMESTATS_ADD(toolong);
-//    RELEASE_LOCK();
+#if RADIOSTATS
+    RF230_receivefail++;
+#endif
     return 0;
   }
  /* Transfer the frame, stripping the footer, but copying the checksum */
@@ -1312,6 +1319,9 @@ if (RF230_receive_on) {
     DEBUGFLOW('K');
     PRINTF("checksum failed 0x%04x != 0x%04x\n",
       checksum, crc16_data(buf, len - AUX_LEN, 0));
+#if RADIOSTATS
+    RF230_receivefail++;
+#endif // RADIOSTATS
   }
 #if FOOTER_LEN
   if(footer[1] & FOOTER1_CRC_OK &&
@@ -1356,6 +1366,9 @@ if (RF230_receive_on) {
     PRINTF("bad crc");
     RIMESTATS_ADD(badcrc);
     len = AUX_LEN;
+#if RADIOSTATS
+    RF230_receivefail++;
+#endif
   }
 #endif
 #endif
