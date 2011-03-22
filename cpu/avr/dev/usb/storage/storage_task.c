@@ -118,14 +118,17 @@ PROCESS_THREAD(storage_process, ev, data_proc)
 	         Usb_select_endpoint(MS_OUT_EP);
 	         
 			 if (Is_usb_receive_out()) {
+				Led3_off();
 	           usb_mass_storage_cbw();
 	           usb_mass_storage_csw();
+				Led3_on();
 	         }
 	     }
 
 	}
 
 	if (usb_mode == mass_storage) {
+		Led3_on();
 		etimer_set(&et, CLOCK_SECOND/250 + 1);
 	} else {
 		etimer_set(&et, CLOCK_SECOND);

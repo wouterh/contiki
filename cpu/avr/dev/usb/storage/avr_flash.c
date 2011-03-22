@@ -51,6 +51,7 @@
 
 #include <avr/pgmspace.h>
 #include <avr/boot.h>
+#include <avr/io.h>
 
 #ifndef SPM_PAGESIZE
 #error SPM_PAGESIZE undefined!!!
@@ -65,6 +66,7 @@
 
 
 #define MEM_BASE_ADDRESS       0x10000UL
+#define SECTOR_SIZE		512
 
 
 DATA    U32  gl_ptr_mem;             /* memory data pointer */
@@ -73,8 +75,8 @@ DATA    U32  gl_ptr_mem;             /* memory data pointer */
 /* Disk management  */
 bit     reserved_disk_space = FALSE;    /* reserved space for application on disk */
 
-
-U32 AVRF_DISK_SIZE = 111; /* 57 KB, some room at end saved for bootloader section */
+//U32 AVRF_DISK_SIZE = 111; /*512*111 = 57 KB, some room at end saved for bootloader section */
+U32 AVRF_DISK_SIZE = 50*1024/SECTOR_SIZE; /* 40 KB, some room at end saved for bootloader section */
 
 
 void  avrf_check_init( void );
@@ -224,7 +226,7 @@ Ctrl_status avrf_write_10( U32 addr , U16 nb_sector )
 bit avrf_read_open (Uint32 pos)
 {
   // Set the global memory ptr at a Byte address.
-  gl_ptr_mem = (pos * 512) + MEM_BASE_ADDRESS;
+  gl_ptr_mem = (pos * SECTOR_SIZE) + MEM_BASE_ADDRESS;
 
   return OK;
 }
@@ -313,7 +315,7 @@ bit avrf_read_sector (Uint16 nb_sector)
 bit avrf_write_open (Uint32 pos)
 {
   // Set the global memory ptr at a Byte address.
-  gl_ptr_mem = (pos * 512) + MEM_BASE_ADDRESS;
+  gl_ptr_mem = (pos * SECTOR_SIZE) + MEM_BASE_ADDRESS;
 
   return OK;
 }
@@ -335,8 +337,14 @@ void avrf_write_close (void)
 
 /* This code can be setup to work with the DFU bootloader, which comes with the AT90USB1287. However I haven't
    had time to test it with such */
-#define LAST_BOOT_ENTRY 0xFFFE
 
+#if (FLASHEND==0x1FFFF) //128K bytes parts #define LAST_BOOT_ENTRY 0xFFFE
+#define LAST_BOOT_ENTRY (0xFFFE<<1)
+#elif (FLASHEND==0xFFFF)//64K bytes parts #define LAST_BOOT_ENTRY 0x7FFE
+#define LAST_BOOT_ENTRY (0x7FFE<<1)
+#else
+#error You must define FLASH_END in bytes.
+#endif
 
 void dfuclone_boot_buffer_write(uint16_t dummy, uint32_t baseaddr, uint16_t pageaddr, uint16_t word);
 void dfuclone_boot_page_erase(uint32_t dummy1, uint16_t dummy2, uint32_t address);
@@ -347,7 +355,7 @@ void dfuclone_boot_page_write(uint32_t dummy1, uint16_t dummy2, uint32_t address
 then call the low-level routines already in the bootloader. */
 #ifdef USE_AVRDFU_BOOTLOADER
 
-#error UNTESTED/UNSUPPORTED AT THIS TIME
+#warning UNTESTED/UNSUPPORTED AT THIS TIME
 
 // These functions pointers are used to call functions entry points in bootloader
 void (*dfu_boot_buffer_write) (uint16_t dummy, uint32_t baseaddr, uint16_t pageaddr, uint16_t word)=
@@ -443,7 +451,7 @@ bit avrf_write_sector (Uint16 nb_sector)
 
 		  sector_bytecounter += SPM_PAGESIZE;
 
-		  if(sector_bytecounter == 512) {
+		  if(sector_bytecounter == SECTOR_SIZE) {
       		nb_sector--;                  // 1 more sector written
 	  		sector_bytecounter = 0;
 		  }

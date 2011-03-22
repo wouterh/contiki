@@ -72,9 +72,6 @@ RNDIS Status Information:
 #include "sicslow_ethernet.h"
 #include <avr/pgmspace.h>
 #include <string.h>
-#if RF230BB
-#include "rf230bb.h"
-#endif
 
 #include <stdio.h>
 #include <avr/pgmspace.h>
