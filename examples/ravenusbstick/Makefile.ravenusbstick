@@ -6,6 +6,8 @@ all: ravenusbstick
 CONTIKI_NO_NET=1
 #UIP_CONF_IPV6=1
 
+CONTIKI_TARGET_SOURCEFILES +=  sicslow_ethernet.c cdc_task.c
+
 CONTIKI = ../..
 
 include $(CONTIKI)/Makefile.include

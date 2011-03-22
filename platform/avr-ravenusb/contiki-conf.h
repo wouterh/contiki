@@ -77,17 +77,28 @@ unsigned long clock_seconds(void);
 /* Clock ticks per second */
 #define CLOCK_CONF_SECOND 125
 
+/* Turn on radio statistics */
+#ifndef RADIOSTATS
+#define RADIOSTATS	1
+#endif
+
+/* Enable the alternate LED scheme, which avoids burning out your retina with the blue LED. */
+#ifndef JACKDAW_CONF_ALT_LED_SCHEME
+#define JACKDAW_CONF_ALT_LED_SCHEME		1
+#endif
+
+/* Enable this if you want to be able to swap our the RDC in the netstack */
+//#define JACKDAW_CONF_USE_CONFIGURABLE_RDC	0
+
 /* Maximum tick interval is 0xffff/125 = 524 seconds */
 #define RIME_CONF_BROADCAST_ANNOUNCEMENT_MAX_TIME CLOCK_CONF_SECOND * 524UL /* Default uses 600UL */
 #define COLLECT_CONF_BROADCAST_ANNOUNCEMENT_MAX_TIME CLOCK_CONF_SECOND * 524UL /* Default uses 600UL */
 
-/* Get Mac address, RF channel, PANID from EEPROM settings manager, or use hard-coded values? */
-/* Generate random MAC address on first startup? */
-/* Random number from radio clock skew or ADC noise? */
-#define JACKDAW_CONF_USE_SETTINGS		0
-#define JACKDAW_CONF_RANDOM_MAC         0
-#define RNG_CONF_USE_RADIO_CLOCK	    1
-//#define RNG_CONF_USE_ADC	1
+/* Mac address, RF channel, PANID from EEPROM settings manager */
+#define JACKDAW_CONF_USE_SETTINGS		1
+
+/* Generate random MAC address on first startup */
+#define JACKDAW_CONF_RANDOM_MAC			1
 
 /* COM port to be used for SLIP connection. Not tested on Jackdaw. */
 #define SLIP_PORT RS232_PORT_0
@@ -102,48 +113,31 @@ unsigned long clock_seconds(void);
 /* Simple stack monitor. Status is displayed from the USB menu with 'm' command */
 #define CONFIG_STACK_MONITOR 1
 
+/* Use the radio clock skew method for the random number generator */
+#define RNG_CONF_USE_RADIO_CLOCK	1 
+
+/* Use the ADC noise method for the random number generator */
+//#define RNG_CONF_USE_ADC	1
+
 /* ************************************************************************** */
-//#pragma mark USB Ethernet Hooks
+#pragma mark - USB Ethernet Hooks
 /* ************************************************************************** */
 
-#ifndef USB_ETH_HOOK_IS_READY_FOR_INBOUND_PACKET
-#if RF230BB
+#define USB_HOOK_UNENUMERATED()		status_leds_unenumerated()
+#define USB_ETH_HOOK_READY()		status_leds_ready()
+#define USB_ETH_HOOK_INACTIVE()		status_leds_inactive()
+
 #define	USB_ETH_HOOK_IS_READY_FOR_INBOUND_PACKET()		rf230_is_ready_to_send()
-#else
-static inline uint8_t radio_is_ready_to_send_() {
-	switch(radio_get_trx_state()) {
-		case BUSY_TX:
-		case BUSY_TX_ARET:
-			return 0;
-	}
-	return 1;
-}
-#define	USB_ETH_HOOK_IS_READY_FOR_INBOUND_PACKET()		radio_is_ready_to_send_()
-#endif
-#endif
-
-#ifndef USB_ETH_HOOK_HANDLE_INBOUND_PACKET
 #define USB_ETH_HOOK_HANDLE_INBOUND_PACKET(buffer,len)	do { uip_len = len ; mac_ethernetToLowpan(buffer); } while(0)
-#endif
-
-#ifndef USB_ETH_HOOK_SET_PROMISCIOUS_MODE
-#if RF230BB
 #define USB_ETH_HOOK_SET_PROMISCIOUS_MODE(value)	rf230_set_promiscuous_mode(value)
-#else		
-#define USB_ETH_HOOK_SET_PROMISCIOUS_MODE(value)	radio_set_trx_state(value?RX_ON:RX_AACK_ON)
-#endif
-#endif
-
-#ifndef USB_ETH_HOOK_INIT
 #define USB_ETH_HOOK_INIT()		mac_ethernetSetup()
-#endif
 
 /* ************************************************************************** */
-//#pragma mark RF230BB Hooks
+#pragma mark - RF230BB Hooks
 /* ************************************************************************** */
 
-//#define RF230BB_HOOK_RADIO_OFF()	Led1_off()
-//#define RF230BB_HOOK_RADIO_ON()		Led1_on()
+#define RF230BB_HOOK_RADIO_OFF()	status_leds_radio_off()
+#define RF230BB_HOOK_RADIO_ON()	status_leds_radio_on()
 #define RF230BB_HOOK_TX_PACKET(buffer,total_len) mac_log_802_15_4_tx(buffer,total_len)
 #define RF230BB_HOOK_RX_PACKET(buffer,total_len) mac_log_802_15_4_rx(buffer,total_len)
 #define	RF230BB_HOOK_IS_SEND_ENABLED()	mac_is_send_enabled()
@@ -153,15 +147,16 @@ extern void mac_log_802_15_4_rx(const uint8_t* buffer, size_t total_len);
 
 
 /* ************************************************************************** */
-//#pragma mark USB CDC-ACM (UART) Hooks
+#pragma mark - USB CDC-ACM (UART) Hooks
 /* ************************************************************************** */
 
-#define USB_CDC_ACM_HOOK_TX_END(char)			vcptx_end_led()
-#define USB_CDC_ACM_HOOK_CLS_CHANGED(state)		vcptx_end_led()
-#define USB_CDC_ACM_HOOK_CONFIGURED()			vcptx_end_led()
+#define USB_CDC_ACM_HOOK_RX(char)				status_leds_serial_rx()
+#define USB_CDC_ACM_HOOK_TX_END(char)			status_leds_serial_tx()
+#define USB_CDC_ACM_HOOK_CLS_CHANGED(state)		status_leds_serial_rx()
+#define USB_CDC_ACM_HOOK_CONFIGURED()			status_leds_serial_rx()
 
 /* ************************************************************************** */
-//#pragma mark Serial Port Settings
+#pragma mark - Serial Port Settings
 /* ************************************************************************** */
 /* Set USB_CONF_MACINTOSH to prefer CDC-ECM+DEBUG enumeration for Mac/Linux 
  * Leave undefined to prefer RNDIS+DEBUG enumeration for Windows/Linux
@@ -172,7 +167,7 @@ extern void mac_log_802_15_4_rx(const uint8_t* buffer, size_t total_len);
  * At present the Windows configuration will not enumerate on the Mac at all,
  * since it wants a custom descriptor for USB composite devices.
  */ 
-#define USB_CONF_MACINTOSH 0
+//#define USB_CONF_MACINTOSH 0
 
 /* Set USB_CONF_SERIAL to enable the USB serial port that allows control of the
  * run-time configuration (COMx on Windows, ttyACMx on Linux, tty.usbmodemx on Mac)
@@ -185,31 +180,28 @@ extern void mac_log_802_15_4_rx(const uint8_t* buffer, size_t total_len);
  * The tx pad is the middle one behind the jackdaw leds.
  * RS232 output will work with or without enabling the USB serial port
  */
-#define USB_CONF_RS232           0
+#define USB_CONF_RS232           1
 
 /* Disable mass storage enumeration for more program space */
 //#define USB_CONF_STORAGE         1   /* TODO: Mass storage is currently broken */
 
 /* ************************************************************************** */
-//#pragma mark UIP Settings
+#pragma mark - UIP Settings
 /* ************************************************************************** */
 /* Network setup. The new NETSTACK interface requires RF230BB (as does ip4) */
 /* These mostly have no effect when the Jackdaw is a repeater (CONTIKI_NO_NET=1 using fakeuip.c) */
 
-#if RF230BB
-#else
 #define PACKETBUF_CONF_HDR_SIZE    0         //RF230 combined driver/mac handles headers internally
-#endif /*RF230BB */
 
 #if UIP_CONF_IPV6
 #define RIMEADDR_CONF_SIZE       8
 #define UIP_CONF_ICMP6           1
-#define UIP_CONF_UDP             1
-#define UIP_CONF_TCP             0
-#define UIP_CONF_IPV6_RPL        0
+
 #define NETSTACK_CONF_NETWORK       sicslowpan_driver
 #define SICSLOWPAN_CONF_COMPRESSION SICSLOWPAN_COMPRESSION_HC06
-#else
+#define SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS 2
+#define SICSLOWPAN_CONF_CONVENTIONAL_MAC    1
+#else // #if UIP_CONF_IPV6
 /* ip4 should build but is thoroughly untested */
 #define RIMEADDR_CONF_SIZE       2
 #define NETSTACK_CONF_NETWORK    rime_driver
@@ -231,10 +223,17 @@ extern void mac_log_802_15_4_rx(const uint8_t* buffer, size_t total_len);
 /* 10 bytes per stateful address context - see sicslowpan.c */
 /* Default is 1 context with prefix aaaa::/64 */
 /* These must agree with all the other nodes or there will be a failure to communicate! */
-#//define SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS 1
+//#define SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS 1
 #define SICSLOWPAN_CONF_ADDR_CONTEXT_0 {addr_contexts[0].prefix[0]=0xaa;addr_contexts[0].prefix[1]=0xaa;}
 #define SICSLOWPAN_CONF_ADDR_CONTEXT_1 {addr_contexts[1].prefix[0]=0xbb;addr_contexts[1].prefix[1]=0xbb;}
 #define SICSLOWPAN_CONF_ADDR_CONTEXT_2 {addr_contexts[2].prefix[0]=0x20;addr_contexts[2].prefix[1]=0x01;addr_contexts[2].prefix[2]=0x49;addr_contexts[2].prefix[3]=0x78,addr_contexts[2].prefix[4]=0x1d;addr_contexts[2].prefix[5]=0xb1;}
+
+#define SICSLOWPAN_CONF_FRAG      1
+#define SICSLOWPAN_CONF_MAXAGE    5
+
+/* ************************************************************************** */
+#pragma mark - NETSTACK Settings
+/* ************************************************************************** */
 
 /* 211 bytes per queue buffer */
 #define QUEUEBUF_CONF_NUM        8
@@ -242,59 +241,38 @@ extern void mac_log_802_15_4_rx(const uint8_t* buffer, size_t total_len);
 /* 54 bytes per queue ref buffer */
 #define QUEUEBUF_CONF_REF_NUM    2
 
-#define UIP_CONF_MAX_CONNECTIONS 1
-#define UIP_CONF_MAX_LISTENPORTS 1
+#define MAC_CONF_CHANNEL_CHECK_RATE 8
 
-#define UIP_CONF_IP_FORWARD      0
-#define UIP_CONF_FWCACHE_SIZE    0
-
-#define UIP_CONF_IPV6_CHECKS     1
-#define UIP_CONF_IPV6_QUEUE_PKT  1
-#define UIP_CONF_IPV6_REASSEMBLY 0
-
-#define UIP_CONF_UDP_CHECKSUMS   1
-#define UIP_CONF_TCP_SPLIT       0
-#define UIP_CONF_STATISTICS      1
-
-  /* Network setup */
-#if 1              /* No radio cycling */
-#define NETSTACK_CONF_MAC         nullmac_driver
-#define NETSTACK_CONF_RDC         sicslowmac_driver
-#define NETSTACK_CONF_FRAMER      framer_802154
-#define NETSTACK_CONF_RADIO       rf230_driver
-#define CHANNEL_802_15_4          26
+/* Auto-ack settings */
 /* AUTOACK receive mode gives better rssi measurements, even if ACK is never requested */
 #define RF230_CONF_AUTOACK        1
-/* Request 802.15.4 ACK on all packets sent by sicslowpan.c (else autoretry) */
-/* Broadcasts will be duplicated by the retry count! */
-#define SICSLOWPAN_CONF_ACK_ALL   0
-/* Number of auto retry attempts 0-15 (0 implies don't use extended TX_ARET_ON mode with CCA) */
-#define RF230_CONF_AUTORETRIES    1
-#define SICSLOWPAN_CONF_FRAG      1
-#define SICSLOWPAN_CONF_MAXAGE    3
+#define RF230_CONF_AUTORETRIES    3
+#define	NULLRDC_FRAMER_802154_AUTOACK	RF230_CONF_AUTOACK
+
+/* Default radio channel */
+#define CHANNEL_802_15_4          26
+
+#define NETSTACK_CONF_NETWORK     sicslowpan_driver
+#define NETSTACK_CONF_MAC         nullmac_driver
+#define NETSTACK_CONF_FRAMER      framer_802154
+#define NETSTACK_CONF_RADIO       rf230_driver
+
+#if JACKDAW_CONF_USE_CONFIGURABLE_RDC
+/* Configurable radio cycling */
+/* EXPERIMENTAL */
+struct rdc_driver;
+extern const struct rdc_driver *rdc_config_driver;
+#define NETSTACK_CONF_RDC         (*rdc_config_driver)
+
+/* Staticly-configured radio cycling below this point */
+#elif 1 /* No radio cycling */
+#define NETSTACK_CONF_RDC         sicslowmac_driver
 
 #elif 0  /* Contiki-mac radio cycling */
-#define NETSTACK_CONF_MAC         nullmac_driver
 #define NETSTACK_CONF_RDC         contikimac_driver
-#define NETSTACK_CONF_FRAMER      framer_802154
-#define NETSTACK_CONF_RADIO       rf230_driver
-#define CHANNEL_802_15_4          26
-#define RF230_CONF_AUTOACK        0
-#define RF230_CONF_AUTORETRIES    0
-#define SICSLOWPAN_CONF_FRAG      1
-#define SICSLOWPAN_CONF_MAXAGE    3
 
-#elif 1             /* cx-mac radio cycling */
-#define NETSTACK_CONF_MAC         nullmac_driver
-//#define NETSTACK_CONF_MAC         csma_driver
+#elif 0             /* cx-mac radio cycling */
 #define NETSTACK_CONF_RDC         cxmac_driver
-#define NETSTACK_CONF_FRAMER      framer_802154
-#define NETSTACK_CONF_RADIO       rf230_driver
-#define CHANNEL_802_15_4          26
-#define RF230_CONF_AUTOACK        1
-#define RF230_CONF_AUTORETRIES    1
-#define SICSLOWPAN_CONF_FRAG      1
-#define SICSLOWPAN_CONF_MAXAGE    3
 #define CXMAC_CONF_ANNOUNCEMENTS    0
 #define NETSTACK_CONF_RDC_CHANNEL_CHECK_RATE 8
 #undef QUEUEBUF_CONF_NUM
@@ -304,13 +282,16 @@ extern void mac_log_802_15_4_rx(const uint8_t* buffer, size_t total_len);
 #undef UIP_CONF_DS6_ROUTE_NBU
 #define UIP_CONF_DS6_ROUTE_NBU     5
 
+/* following gives 50% duty cycle for CXMAC RDC, undef for default 5% */
+#define CXMAC_CONF_ON_TIME (RTIMER_ARCH_SECOND / 16)
+
 #else
 #error Network configuration not specified!
 #endif   /* Network setup */
 
 
 /* ************************************************************************** */
-//#pragma mark RPL Settings
+#pragma mark - RPL Settings
 /* ************************************************************************** */
 
 #if UIP_CONF_IPV6_RPL
@@ -403,7 +384,7 @@ extern void mac_log_802_15_4_rx(const uint8_t* buffer, size_t total_len);
 #endif /* UIP_CONF_IPV6_RPL */
 
 /* ************************************************************************** */
-//#pragma mark Other Settings
+#pragma mark - Other Settings
 /* ************************************************************************** */
 
 /* Use Atmel 'Route Under MAC', currently just in RF230 sniffer mode! */
