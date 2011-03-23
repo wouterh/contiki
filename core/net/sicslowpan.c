@@ -1298,10 +1298,6 @@ output(uip_lladdr_t *localdest)
   /* reset rime buffer */
   packetbuf_clear();
   rime_ptr = packetbuf_dataptr();
-
-  /* Only enable reliable transmission if we are targeting a
-   * real host */
-  packetbuf_set_attr(PACKETBUF_ATTR_RELIABLE,!rimeaddr_cmp(localdest, &rimeaddr_null));
   
   packetbuf_set_attr(PACKETBUF_ATTR_MAX_MAC_TRANSMISSIONS,
                      SICSLOWPAN_MAX_MAC_TRANSMISSIONS);
@@ -1328,8 +1324,11 @@ output(uip_lladdr_t *localdest)
    */
   if(localdest == NULL) {
     rimeaddr_copy(&dest, &rimeaddr_null);
+    // Never request an ACK from broadcasts.
+    packetbuf_set_attr(PACKETBUF_ATTR_RELIABLE,0);
   } else {
     rimeaddr_copy(&dest, (const rimeaddr_t *)localdest);
+    packetbuf_set_attr(PACKETBUF_ATTR_RELIABLE,1);
   }
   
   PRINTFO("sicslowpan output: sending packet len %d\n", uip_len);
