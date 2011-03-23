@@ -442,7 +442,8 @@ rf230_set_promiscuous_mode(bool isPromiscuous) {
 #if RF230_CONF_AUTOACK
     is_promiscuous = isPromiscuous;
 /* TODO: Figure out when to pass promisc state to 802.15.4 */
-//    radio_set_trx_state(is_promiscuous?RX_ON:RX_AACK_ON);
+    rf230_waitidle();
+    radio_set_trx_state(is_promiscuous?RX_ON:RX_AACK_ON);
 #endif
 }
 
@@ -484,8 +485,7 @@ on(void)
   rf230_waitidle();
 
 #if RF230_CONF_AUTOACK
- // radio_set_trx_state(is_promiscuous?RX_ON:RX_AACK_ON);
-  radio_set_trx_state(RX_AACK_ON);
+  radio_set_trx_state(is_promiscuous?RX_ON:RX_AACK_ON);
 #else
   radio_set_trx_state(RX_ON);
 #endif
@@ -835,7 +835,9 @@ rf230_transmit(unsigned short payload_len)
 
  /* Get the transmission result */  
 #if RF230_CONF_AUTORETRIES
-  tx_result = hal_subregister_read(SR_TRAC_STATUS);
+  if(!is_promiscuous)
+      tx_result = hal_subregister_read(SR_TRAC_STATUS);
+  else
 #else
   tx_result=0;
 #endif
@@ -1051,6 +1053,7 @@ rf230_set_channel(uint8_t c)
   rf230_waitidle();
   channel=c;
   hal_subregister_write(SR_CHANNEL, c);
+  radio_set_trx_state(is_promiscuous?RX_ON:RX_AACK_ON);
 }
 /*---------------------------------------------------------------------------*/
 void
