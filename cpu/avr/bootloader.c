@@ -7,8 +7,11 @@
 #include "dev/usb/usb_drv.h"
 #include <avr/pgmspace.h>
 #include <avr/interrupt.h>
+#include <avr/eeprom.h>
 
 volatile uint32_t Boot_Key ATTR_NO_INIT;
+
+#define EEPROM_MAGIC_BYTE   (uint8_t*)(E2END-3)
 
 bool
 bootloader_is_present(void) {
@@ -35,7 +38,15 @@ Jump_To_Bootloader(void)
 
 	// Set the bootloader key to the magic value and force a reset
 	Boot_Key = MAGIC_BOOT_KEY;
-	
+
+    // Disable all interrupts
+    cli();
+    
+    eeprom_write_byte(EEPROM_MAGIC_BYTE,0xFF);
+    
+    // Enable interrupts
+    sei();
+
 	watchdog_reboot();
 }
 
@@ -50,6 +61,14 @@ Bootloader_Jump_Check(void)
 		if(Boot_Key == MAGIC_BOOT_KEY) {
 			Boot_Key = 0;
 			wdt_disable();
+
+            // Disable all interrupts
+            cli();
+            
+            eeprom_write_byte(EEPROM_MAGIC_BYTE,0xFF);
+            
+            // Enable interrupts
+            sei();
 			
 			((void (*)(void))(BOOTLOADER_START_ADDRESS))();
 		} else {
