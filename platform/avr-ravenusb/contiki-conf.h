@@ -191,8 +191,6 @@ extern void mac_log_802_15_4_rx(const uint8_t* buffer, size_t total_len);
 /* Network setup. The new NETSTACK interface requires RF230BB (as does ip4) */
 /* These mostly have no effect when the Jackdaw is a repeater (CONTIKI_NO_NET=1 using fakeuip.c) */
 
-#define PACKETBUF_CONF_HDR_SIZE    0         //RF230 combined driver/mac handles headers internally
-
 #if UIP_CONF_IPV6
 #define RIMEADDR_CONF_SIZE       8
 #define UIP_CONF_ICMP6           1
