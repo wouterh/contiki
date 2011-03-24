@@ -39,5 +39,6 @@
 PROCESS_NAME(tapdev_process);
 
 u8_t tapdev_output(void);
+int tapdev_fd(void);
 
 #endif /* __TAPDEV_DRV_H__ */

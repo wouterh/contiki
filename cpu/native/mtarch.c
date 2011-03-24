@@ -42,6 +42,10 @@ static void *main_fiber;
 
 #else /* __CYGWIN__ */
 
+#ifdef __APPLE__
+#define _XOPEN_SOURCE 1
+#endif
+
 #include <stdlib.h>
 #include <signal.h>
 #include <ucontext.h>

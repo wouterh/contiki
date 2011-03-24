@@ -353,7 +353,17 @@ uint8_t i;
   }
    eeprom_read_block (buf,server_name, sizeof(server_name));
    buf[sizeof(server_name)]=0;
-   PRINTF("%s",buf);
+
+#if RAVEN_CONF_USE_SETTINGS
+    settings_get_cstr(SETTINGS_KEY_HOSTNAME, 0, buf, sizeof(buf));
+#endif
+
+#if RESOLV_CONF_MDNS_RESPONDER
+    if(buf[0])
+        resolv_set_hostname(buf);
+#endif
+
+    PRINTF("%s",buf);
    eeprom_read_block (buf,domain_name, sizeof(domain_name));
    buf[sizeof(domain_name)]=0;
    size=httpd_fs_get_size();
@@ -386,7 +396,27 @@ extern char rf230_interrupt_flag, rf230processflag;
 int
 main(void)
 {
-  initialize();
+	/* Autostart other processes */
+	autostart_start(autostart_processes);
+    
+	while(1) {
+		watchdog_periodic();
+		
+		if(process_run()==0) {
+#if AVR_CONF_ALLOW_AUTOSLEEP
+			clock_time_t sleep_period = etimer_next_expiration_time() - clock_time();
+            
+			PRINTF("Going to sleep for %lu clock ticks...\n",(unsigned long)sleep_period);
+            
+			watchdog_stop();
+			
+			clock_sleep_with_max_duration(sleep_period);
+            
+			watchdog_start();
+            
+			PRINTF("...Woke from sleep\n");
+#endif
+		}
 
   while(1) {
     process_run();

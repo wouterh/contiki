@@ -31,8 +31,7 @@
  */
 
 /*---------------------------------------------------------------------------*/
-//#include "mac_event.h"
-#include "uip.h"
-#include <avr/pgmspace.h>
+#include "contiki.h"
 #include <stdio.h>
 
+AUTOSTART_PROCESSES(NULL);
