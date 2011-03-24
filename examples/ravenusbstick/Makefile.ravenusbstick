@@ -6,7 +6,7 @@ all: ravenusbstick
 CONTIKI_NO_NET=1
 #UIP_CONF_IPV6=1
 
-CONTIKI_TARGET_SOURCEFILES +=  sicslow_ethernet.c cdc_task.c
+CONTIKI_TARGET_SOURCEFILES += cdc_task.c sicslow_ethernet.c
 
 CFLAGS += -DJACKDAW=1
 CFLAGS += -include bridge-config.h
