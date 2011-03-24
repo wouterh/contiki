@@ -127,10 +127,12 @@ unsigned long clock_seconds(void);
 #define USB_ETH_HOOK_READY()		status_leds_ready()
 #define USB_ETH_HOOK_INACTIVE()		status_leds_inactive()
 
+/*
 #define	USB_ETH_HOOK_IS_READY_FOR_INBOUND_PACKET()		rf230_is_ready_to_send()
 #define USB_ETH_HOOK_HANDLE_INBOUND_PACKET(buffer,len)	do { uip_len = len ; mac_ethernetToLowpan(buffer); } while(0)
 #define USB_ETH_HOOK_SET_PROMISCIOUS_MODE(value)	rf230_set_promiscuous_mode(value)
 #define USB_ETH_HOOK_INIT()		mac_ethernetSetup()
+*/
 
 /* ************************************************************************** */
 #pragma mark - RF230BB Hooks
