@@ -493,9 +493,7 @@ uint16_t p=(uint16_t)&__bss_end;
 
   /* Setup USB */
   process_start(&usb_process, NULL);
-#if USB_CONF_SERIAL
-  process_start(&cdc_process, NULL);
-#endif
+
   process_start(&usb_eth_process, NULL);
 #if USB_CONF_STORAGE
   process_start(&storage_process, NULL);

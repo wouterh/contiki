@@ -33,5 +33,6 @@
 /*---------------------------------------------------------------------------*/
 #include "contiki.h"
 #include <stdio.h>
+#include "cdc_task.h"
 
-AUTOSTART_PROCESSES(NULL);
+AUTOSTART_PROCESSES(&cdc_process);
