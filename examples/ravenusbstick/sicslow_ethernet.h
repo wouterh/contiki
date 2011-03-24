@@ -60,6 +60,7 @@ typedef struct {
 	uint8_t translate	:1;
 	uint8_t raw         :1;
 	uint8_t debugOn     :1;
+    uint8_t sneeze      :1;
 } usbstick_mode_t;
 
 
