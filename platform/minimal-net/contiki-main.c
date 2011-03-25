@@ -115,6 +115,10 @@ main(void)
 
   autostart_start(autostart_processes);
 
+#if UIP_CONF_IPV6
+#define uip_ethaddr uip_lladdr
+#endif
+
   /* Default initial MAC address is
    * 02:00:00:00:13:37 */
   uip_ethaddr.addr[0]=0x20;
