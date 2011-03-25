@@ -159,7 +159,10 @@ PROCESS_THREAD(cdc_process, ev, data_proc)
 				if(previous_uart_usb_control_line_state&1) {
 					previous_stdout = stdout;
 					uart_usb_set_stdout();
-				//	menu_print(); do this later
+                    // At this point the user has opened
+                    // the USB debug port. Send them a 
+                    // menu so that they can know what to do.
+					menu_print();
 				} else {
 					stdout = previous_stdout;
 				}
