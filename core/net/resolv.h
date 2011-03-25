@@ -53,6 +53,11 @@ CCIF uip_ipaddr_t *resolv_getserver(void);
 CCIF uip_ipaddr_t *resolv_lookup(const char *name);
 CCIF void resolv_query(const char *name);
 
+#if RESOLV_CONF_MDNS_RESPONDER
+CCIF void resolv_set_hostname(const char* hostname);
+CCIF const char* resolv_get_hostname(void);
+#endif
+
 PROCESS_NAME(resolv_process);
 
 #endif /* __RESOLV_H__ */
