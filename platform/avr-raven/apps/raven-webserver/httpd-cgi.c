@@ -28,10 +28,10 @@
  *
  * This file is part of the uIP TCP/IP stack.
  *
- * $Id: httpd-cgi.c,v 1.8 2010/10/19 18:29:05 adamdunkels Exp $
+ * $Id: httpd-cgi.c,v 1.13 2010/12/23 19:41:07 dak664 Exp $
  *
  */
-
+/* Line endings in git repository are LF instead of CR-LF ? */
 /*
  * This file includes functions that are called by the web server
  * scripts. The functions takes no argument, and the return value is
@@ -75,6 +75,9 @@ static const char   file_name[] HTTPD_STRING_ATTR = "file-stats";
 static const char    tcp_name[] HTTPD_STRING_ATTR = "tcp-connections";
 static const char   proc_name[] HTTPD_STRING_ATTR = "processes";
 static const char sensor_name[] HTTPD_STRING_ATTR = "sensors";
+static const char   adrs_name[] HTTPD_STRING_ATTR = "addresses";
+static const char   nbrs_name[] HTTPD_STRING_ATTR = "neighbors";
+static const char   rtes_name[] HTTPD_STRING_ATTR = "routes";
 
 /*Process states for processes cgi*/
 static const char      closed[] HTTPD_STRING_ATTR = "CLOSED";
@@ -106,10 +109,11 @@ static const char *states[] = {
   static char sensor_temperature[12]="Not Enabled";
   static char sensor_extvoltage[12]="Not Enabled";
   static unsigned long last_tempupdate,last_extvoltageupdate;
-  extern unsigned long seconds;
+  extern unsigned long seconds, sleepseconds;
 #if RADIOSTATS
   extern unsigned long radioontime;
-  extern uint8_t RF230_radio_on, RF230_rsigsi;
+  static unsigned long savedradioontime;
+  extern uint8_t RF230_radio_on, rf230_last_rssi;
   extern uint16_t RF230_sendpackets,RF230_receivepackets,RF230_sendfail,RF230_receivefail;
 #endif
   
@@ -118,12 +122,14 @@ void
 web_set_temp(char *s)
 {
   strcpy(sensor_temperature, s);
+//  printf_P(PSTR("got temp"));
   last_tempupdate=seconds;
 }
 void
 web_set_voltage(char *s)
 {
   strcpy(sensor_extvoltage, s);
+//    printf_P(PSTR("got volts"));
   last_extvoltageupdate=seconds;
 }
 
@@ -267,7 +273,6 @@ make_processes(void *p)
   petsciiconv_toascii(name, 40);
   httpd_strcpy(tstate,states[9 + ((struct process *)p)->state]);
   return httpd_snprintf((char *)uip_appdata, uip_mss(), httpd_cgi_proc, p, name,
-//  *((char **)&(((struct process *)p)->thread)),
     *(char *)(&(((struct process *)p)->thread)),
 
     tstate);
@@ -283,22 +288,127 @@ PT_THREAD(processes(struct httpd_state *s, char *ptr))
   PSOCK_END(&s->sout);
 }
 /*---------------------------------------------------------------------------*/
+static const char httpd_cgi_addrh[] HTTPD_STRING_ATTR = "<code>";
+static const char httpd_cgi_addrf[] HTTPD_STRING_ATTR = "</code>[Room for %u more]";
+static const char httpd_cgi_addrb[] HTTPD_STRING_ATTR = "<br>";
+static const char httpd_cgi_addrn[] HTTPD_STRING_ATTR = "(none)<br>";
+extern uip_ds6_nbr_t uip_ds6_nbr_cache[];
+extern uip_ds6_route_t uip_ds6_routing_table[];
+extern uip_ds6_netif_t uip_ds6_if;
+
+static unsigned short
+make_addresses(void *p)
+{
+uint8_t i,j=0;
+uint16_t numprinted;
+  numprinted = httpd_snprintf((char *)uip_appdata, uip_mss(),httpd_cgi_addrh);
+  for (i=0; i<UIP_DS6_ADDR_NB;i++) {
+    if (uip_ds6_if.addr_list[i].isused) {
+      j++;
+      numprinted += httpd_cgi_sprint_ip6(uip_ds6_if.addr_list[i].ipaddr, uip_appdata + numprinted);
+      numprinted += httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_addrb); 
+    }
+  }
+//if (j==0) numprinted += httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_addrn);
+  numprinted += httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_addrf, UIP_DS6_ADDR_NB-j); 
+  return numprinted;
+}
+/*---------------------------------------------------------------------------*/
+static
+PT_THREAD(addresses(struct httpd_state *s, char *ptr))
+{
+  PSOCK_BEGIN(&s->sout);
+
+  PSOCK_GENERATOR_SEND(&s->sout, make_addresses, s->u.ptr);
+
+  PSOCK_END(&s->sout);
+}
+/*---------------------------------------------------------------------------*/	
+static unsigned short
+make_neighbors(void *p)
+{
+uint8_t i,j=0;
+uint16_t numprinted;
+  numprinted = httpd_snprintf((char *)uip_appdata, uip_mss(),httpd_cgi_addrh);
+  for (i=0; i<UIP_DS6_NBR_NB;i++) {
+    if (uip_ds6_nbr_cache[i].isused) {
+      j++;
+      numprinted += httpd_cgi_sprint_ip6(uip_ds6_nbr_cache[i].ipaddr, uip_appdata + numprinted);
+      numprinted += httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_addrb); 
+    }
+  }
+//if (j==0) numprinted += httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_addrn);
+  numprinted += httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_addrf,UIP_DS6_NBR_NB-j);
+  return numprinted;
+}
+/*---------------------------------------------------------------------------*/
+static
+PT_THREAD(neighbors(struct httpd_state *s, char *ptr))
+{
+  PSOCK_BEGIN(&s->sout);
+
+  PSOCK_GENERATOR_SEND(&s->sout, make_neighbors, s->u.ptr);  
+  
+  PSOCK_END(&s->sout);
+}
+/*---------------------------------------------------------------------------*/			
+static unsigned short
+make_routes(void *p)
+{
+static const char httpd_cgi_rtes1[] HTTPD_STRING_ATTR = "(%u (via ";
+static const char httpd_cgi_rtes2[] HTTPD_STRING_ATTR = ") %lus<br>";
+static const char httpd_cgi_rtes3[] HTTPD_STRING_ATTR = ")<br>";
+uint8_t i,j=0;
+uint16_t numprinted;
+  numprinted = httpd_snprintf((char *)uip_appdata, uip_mss(),httpd_cgi_addrh);
+  for (i=0; i<UIP_DS6_ROUTE_NB;i++) {
+    if (uip_ds6_routing_table[i].isused) {
+      j++;
+      numprinted += httpd_cgi_sprint_ip6(uip_ds6_routing_table[i].ipaddr, uip_appdata + numprinted);
+      numprinted += httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_rtes1, uip_ds6_routing_table[i].length);
+      numprinted += httpd_cgi_sprint_ip6(uip_ds6_routing_table[i].nexthop, uip_appdata + numprinted);
+      if(uip_ds6_routing_table[i].state.lifetime < 3600) {
+         numprinted += httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_rtes2, uip_ds6_routing_table[i].state.lifetime);
+      } else {
+         numprinted += httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_rtes3);
+      }
+    }
+  }
+  if (j==0) numprinted += httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_addrn);
+  numprinted += httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_addrf,UIP_DS6_ROUTE_NB-j);
+  return numprinted;
+}
+/*---------------------------------------------------------------------------*/
+static
+PT_THREAD(routes(struct httpd_state *s, char *ptr))
+{
+  PSOCK_BEGIN(&s->sout);
+ 
+  PSOCK_GENERATOR_SEND(&s->sout, make_routes, s->u.ptr); 
+ 
+  PSOCK_END(&s->sout);
+}
+/*---------------------------------------------------------------------------*/
 static unsigned short
 generate_sensor_readings(void *arg)
 {
   uint16_t numprinted;
   uint16_t h,m,s;
+  uint8_t p1;
   static const char httpd_cgi_sensor0[] HTTPD_STRING_ATTR = "[Updated %d seconds ago]<br><br>";
-  static const char httpd_cgi_sensor1[] HTTPD_STRING_ATTR = "<em>Temperature:</em> %s<br>";
-  static const char httpd_cgi_sensor2[] HTTPD_STRING_ATTR = "<em>Voltage:</em> %s<br>";
-  static const char httpd_cgi_sensor3[] HTTPD_STRING_ATTR = "<em>Up time:</em> %02d:%02d:%02d<br>";
+//  static const char httpd_cgi_sensor1[] HTTPD_STRING_ATTR = "<em>Temperature:</em> %s<br>";
+//  static const char httpd_cgi_sensor2[] HTTPD_STRING_ATTR = "<em>Battery:</em> %s<br>";
+  static const char httpd_cgi_sensr12[] HTTPD_STRING_ATTR = "<em>Temperature:</em> %s    <em>Battery:<em> %s<br>";
+  static const char httpd_cgi_sensor3[] HTTPD_STRING_ATTR = "<em>Elapsed timer :</em> %02d:%02d:%02d<br>";
+  static const char httpd_cgi_sensor4[] HTTPD_STRING_ATTR = "<em>Sleeping time :</em> %02d:%02d:%02d (%d%%)<br>";
 
   numprinted=0;
   if (last_tempupdate) {
     numprinted =httpd_snprintf((char *)uip_appdata, uip_mss(), httpd_cgi_sensor0,seconds-last_tempupdate);
   }
 
-  numprinted+=httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_sensor1, sensor_temperature);
+//  numprinted+=httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_sensor1, sensor_temperature);
+  numprinted+=httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_sensr12, sensor_temperature,sensor_extvoltage);
 
 #if 0
 //Measuring AVcc might be useful to check on battery condition but on ext power it's always 3v3
@@ -312,13 +422,24 @@ generate_sensor_readings(void *arg)
   h=1131632UL/ADC;          //Get supply voltage
 #endif
 
-  numprinted+=httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_sensor2, sensor_extvoltage);
-
+ // numprinted+=httpd_snprintf((char *)uip_appdata+numprinted, uip_mss()-numprinted, httpd_cgi_sensor2, sensor_extvoltage);
+#if RADIOSTATS
+  /* Remember radioontime for display below - slow connection might make it report longer than cpu ontime! */
+  savedradioontime = radioontime;
+#endif
   h=seconds/3600;
   s=seconds-h*3600;
   m=s/60;
   s=s-m*60;
   numprinted+=httpd_snprintf((char *)uip_appdata + numprinted, uip_mss() - numprinted, httpd_cgi_sensor3, h,m,s);
+  if (sleepseconds) {
+    p1=100UL*sleepseconds/seconds;
+    h=sleepseconds/3600;
+    s=sleepseconds-h*3600;
+    m=s/60;
+    s=s-m*60;
+    numprinted+=httpd_snprintf((char *)uip_appdata + numprinted, uip_mss() - numprinted, httpd_cgi_sensor4, h,m,s,p1);
+  }
   return numprinted;
 }
 #if RADIOSTATS
@@ -329,21 +450,30 @@ generate_radio_stats(void *arg)
   uint16_t numprinted;
   uint16_t h,m,s;
   uint8_t p1,p2;
-  static const char httpd_cgi_sensor4[] HTTPD_STRING_ATTR = "<em>Radio on:</em> %02d:%02d:%02d (%d.%02d%%)<br>";
-  static const char httpd_cgi_sensor5[] HTTPD_STRING_ATTR = "<em>Packets:</em> Tx=%5d Rx=%5d TxL=%5d RxL=%5d RSSI=%2d\n";
+  static const char httpd_cgi_sensor10[] HTTPD_STRING_ATTR = "<em>Radio on time  :</em> %02d:%02d:%02d (%d.%02d%%)<br>";
+  static const char httpd_cgi_sensor11[] HTTPD_STRING_ATTR = "<em>Packets:</em> Tx=%5d Rx=%5d TxL=%5d RxL=%5d RSSI=%2ddBm\n";
 
-  s=(10000UL*radioontime)/seconds;
+  s=(10000UL*savedradioontime)/seconds;
   p1=s/100;
   p2=s-p1*100;
-  h=radioontime/3600;
-  s=radioontime-h*3600;
+  h=savedradioontime/3600;
+  s=savedradioontime-h*3600;
   m=s/60;
   s=s-m*60;
 
-  numprinted =httpd_snprintf((char *)uip_appdata             , uip_mss()             , httpd_cgi_sensor4,\
-    h,m,s,p1,p2);  
-  numprinted+=httpd_snprintf((char *)uip_appdata + numprinted, uip_mss() - numprinted, httpd_cgi_sensor5,\
-    RF230_sendpackets,RF230_receivepackets,RF230_sendfail,RF230_receivefail,RF230_rsigsi);  
+  numprinted =httpd_snprintf((char *)uip_appdata             , uip_mss()             , httpd_cgi_sensor10,\
+    h,m,s,p1,p2);
+
+#if RF230BB
+  numprinted+=httpd_snprintf((char *)uip_appdata + numprinted, uip_mss() - numprinted, httpd_cgi_sensor11,\
+    RF230_sendpackets,RF230_receivepackets,RF230_sendfail,RF230_receivefail,-92+rf230_last_rssi);
+#else
+  p1=0;
+  radio_get_rssi_value(&p1);
+  p1 = -91*3(p1-1);
+  numprinted+=httpd_snprintf((char *)uip_appdata + numprinted, uip_mss() - numprinted, httpd_cgi_sensor11,\
+    RF230_sendpackets,RF230_receivepackets,RF230_sendfail,RF230_receivefail,p1);
+#endif
  
   return numprinted;
 }
@@ -383,6 +513,9 @@ HTTPD_CGI_CALL(   file,   file_name,      file_stats);
 #endif
 HTTPD_CGI_CALL(    tcp,    tcp_name, tcp_stats      );
 HTTPD_CGI_CALL(   proc,   proc_name, processes      );
+HTTPD_CGI_CALL(   adrs,   adrs_name, addresses      );
+HTTPD_CGI_CALL(   nbrs,   nbrs_name, neighbors      );
+HTTPD_CGI_CALL(   rtes,   rtes_name, routes         );
 HTTPD_CGI_CALL(sensors, sensor_name, sensor_readings);
 
 void
@@ -393,6 +526,9 @@ httpd_cgi_init(void)
 #endif
   httpd_cgi_add(    &tcp);
   httpd_cgi_add(   &proc);
+  httpd_cgi_add(   &adrs);
+  httpd_cgi_add(   &nbrs);
+  httpd_cgi_add(   &rtes);
   httpd_cgi_add(&sensors);
 }
 /*---------------------------------------------------------------------------*/

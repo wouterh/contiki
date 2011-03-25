@@ -36,13 +36,10 @@ savedefines:
 	@echo >Makefile.$(TARGET).defines "DEFINES = $(DEFINES)"
 
 OBJECTDIR = obj_$(TARGET)
-ifeq (${wildcard $(OBJECTDIR)},)
-  DUMMY := ${shell mkdir $(OBJECTDIR)}
-endif
 
 LOWERCASE = -abcdefghijklmnopqrstuvwxyz
 UPPERCASE = _ABCDEFGHIJKLMNOPQRSTUVWXYZ
-TARGET_UPPERCASE := ${shell echo $(TARGET) | sed 'y!$(LOWERCASE)!$(UPPERCASE)!'}
+TARGET_UPPERCASE := ${strip ${shell echo $(TARGET) | sed y!$(LOWERCASE)!$(UPPERCASE)!}}
 CFLAGS += -DCONTIKI=1 -DCONTIKI_TARGET_$(TARGET_UPPERCASE)=1
 
 include $(CONTIKI)/core/net/rime/Makefile.rime
@@ -109,10 +106,13 @@ endif
 
 target_makefile := $(wildcard $(CONTIKI)/platform/$(TARGET)/Makefile.$(TARGET))
 
-# Check if the target makefile exists
+# Check if the target makefile exists, and create the object directory if necessary.
 ifeq ($(strip $(target_makefile)),)
   ${error The target platform "$(TARGET)" does not exist (maybe it was misspelled?)}
 else
+  ifeq (${wildcard $(OBJECTDIR)},)
+    DUMMY := ${shell mkdir $(OBJECTDIR)}
+  endif
   include $(CONTIKI)/platform/$(TARGET)/Makefile.$(TARGET)
 endif
 

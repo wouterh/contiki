@@ -258,6 +258,11 @@
 #endif
 
 static const uint64_t simple_trans_ethernet_addr = 0x3E3D3C3B3AF2ULL;
+
+#if UIP_CONF_IPV6_RPL
+static uip_ipaddr_t last_sender;
+#endif
+
 extern uint64_t usb_ethernet_addr;
 
 extern uint64_t macLongAddr;
@@ -304,8 +309,9 @@ void mac_ethernetSetup(void)
   usbstick_mode.sicslowpan = 1;
   usbstick_mode.sendToRf = 1;
   usbstick_mode.translate = 1;
-//usbstick_mode.raw = 1;
-  usbstick_mode.raw = 0; //default: don't report raw frames until they are entirely correct
+  usbstick_mode.debugOn= 1;
+  usbstick_mode.raw = 0;
+  usbstick_mode.sneeze=0;
 
 #if !RF230BB
   sicslowinput = pinput;
@@ -334,14 +340,14 @@ void mac_ethernetToLowpan(uint8_t * ethHeader)
    return;
    #endif
 
-  // In sniffer mode we don't ever send anything
-  if (usbstick_mode.sendToRf == 0) {
+  /* In sniffer or sneezr mode we don't ever send anything */
+  if ((usbstick_mode.sendToRf == 0) || (usbstick_mode.sneeze != 0)) {
     uip_len = 0;
     return;
   }
 
 
-  //If not IPv6 we don't do anything
+  /* If not IPv6 we don't do anything. Disable ipv4 on the interface to prevent possible hangs from discovery packet flooding */
   if (((struct uip_eth_hdr *) ethHeader)->type != UIP_HTONS(UIP_ETHTYPE_IPV6)) {
     PRINTF("eth2low: Dropping packet w/type=0x%04x\n",uip_ntohs(((struct uip_eth_hdr *) ethHeader)->type));
   //      printf("!ipv6");
@@ -375,6 +381,7 @@ void mac_ethernetToLowpan(uint8_t * ethHeader)
 
   /* Simple Address Translation */
   if(memcmp((uint8_t *)&simple_trans_ethernet_addr, &(((struct uip_eth_hdr *) ethHeader)->dest.addr[0]), 6) == 0) {
+#if UIP_CONF_IPV6
         //Addressed to us: make 802.15.4 address from IPv6 Address
         destAddr.addr[0] = UIP_IP_BUF->destipaddr.u8[8] ^ 0x02;
         destAddr.addr[1] = UIP_IP_BUF->destipaddr.u8[9];
@@ -384,6 +391,18 @@ void mac_ethernetToLowpan(uint8_t * ethHeader)
         destAddr.addr[5] = UIP_IP_BUF->destipaddr.u8[13];
         destAddr.addr[6] = UIP_IP_BUF->destipaddr.u8[14];
         destAddr.addr[7] = UIP_IP_BUF->destipaddr.u8[15];
+#else
+		//Not intended to be functional, but allows ip4 build without errors.
+        destAddr.addr[0] = UIP_IP_BUF->destipaddr.u8[0] ^ 0x02;
+        destAddr.addr[1] = UIP_IP_BUF->destipaddr.u8[1];
+        destAddr.addr[2] = UIP_IP_BUF->destipaddr.u8[2];
+        destAddr.addr[3] = UIP_IP_BUF->destipaddr.u8[3];
+        destAddr.addr[4] = UIP_IP_BUF->destipaddr.u8[0];
+        destAddr.addr[5] = UIP_IP_BUF->destipaddr.u8[1];
+        destAddr.addr[6] = UIP_IP_BUF->destipaddr.u8[2];
+        destAddr.addr[7] = UIP_IP_BUF->destipaddr.u8[3];
+
+#endif
 
         destAddrPtr = &destAddr;
   }
@@ -408,7 +427,7 @@ void mac_ethernetToLowpan(uint8_t * ethHeader)
     }
     PRINTF(" translated OK\n\r");
     destAddrPtr = &destAddr;
-#endif
+#endif /* UIP_CONF_SIMPLE_JACKDAW_ADDR_TRANS */
 
 
   }
@@ -425,12 +444,25 @@ void mac_ethernetToLowpan(uint8_t * ethHeader)
     mac_translateIPLinkLayer(ll_802154_type);
 #endif
   }
-	
+
+#if UIP_CONF_IPV6
+/* Send the packet to the uip6 stack if it exists, else send to 6lowpan */
+#if UIP_CONF_IPV6_RPL
+/* Save the destination address, to trap ponging it back to the interface */
+  uip_ipaddr_copy(&last_sender, &UIP_IP_BUF->srcipaddr);
+  tcpip_input();
+#else
+//  PRINTF("Input from %x %x %x %x %x %x %x %x\n",UIP_IP_BUF->srcipaddr.u8[0],UIP_IP_BUF->srcipaddr.u8[1],UIP_IP_BUF->srcipaddr.u8[2],UIP_IP_BUF->srcipaddr.u8[3],UIP_IP_BUF->srcipaddr.u8[4],UIP_IP_BUF->srcipaddr.u8[5],UIP_IP_BUF->srcipaddr.u8[6],UIP_IP_BUF->srcipaddr.u8[7]);
+//  PRINTF("Output to %x %x %x %x %x %x %x %x\n",destAddr.addr[0],destAddr.addr[1],destAddr.addr[2],destAddr.addr[3],destAddr.addr[4],destAddr.addr[5],destAddr.addr[6],destAddr.addr[7]);
   tcpip_output(destAddrPtr);
+#endif
+#else  /* UIP_CONF_IPV6 */
+  tcpip_output();    //Allow non-ipv6 builds (Hello World) 
+#endif /* UIP_CONF_IPV6 */
+
 #if !RF230BB
   usb_eth_stat.txok++;
 #endif
-
   uip_len = 0;
 
 }
@@ -446,7 +478,6 @@ void mac_LowpanToEthernet(void)
   parsed_frame = sicslowmac_get_frame();
 #endif
 
-//printf("in lowpantoethernet\n\r");
   //Setup generic ethernet stuff
   ETHBUF(uip_buf)->type = uip_htons(UIP_ETHTYPE_IPV6);
 
@@ -461,10 +492,19 @@ void mac_LowpanToEthernet(void)
 #endif
     ETHBUF(uip_buf)->dest.addr[0] = 0x33;
     ETHBUF(uip_buf)->dest.addr[1] = 0x33;
+
+#if UIP_CONF_IPV6
     ETHBUF(uip_buf)->dest.addr[2] = UIP_IP_BUF->destipaddr.u8[12];
     ETHBUF(uip_buf)->dest.addr[3] = UIP_IP_BUF->destipaddr.u8[13];
     ETHBUF(uip_buf)->dest.addr[4] = UIP_IP_BUF->destipaddr.u8[14];
     ETHBUF(uip_buf)->dest.addr[5] = UIP_IP_BUF->destipaddr.u8[15];
+#else
+	//Not intended to be functional, but allows ip4 build without errors.
+    ETHBUF(uip_buf)->dest.addr[2] = UIP_IP_BUF->destipaddr.u8[0];
+    ETHBUF(uip_buf)->dest.addr[3] = UIP_IP_BUF->destipaddr.u8[1];
+    ETHBUF(uip_buf)->dest.addr[4] = UIP_IP_BUF->destipaddr.u8[2];
+    ETHBUF(uip_buf)->dest.addr[5] = UIP_IP_BUF->destipaddr.u8[3];
+#endif
   } else {
 	//Otherwise we have a real address
 	mac_createEthernetAddr((uint8_t *) &(ETHBUF(uip_buf)->dest.addr[0]),
@@ -478,6 +518,7 @@ void mac_LowpanToEthernet(void)
     (uip_lladdr_t *)packetbuf_addr(PACKETBUF_ADDR_SENDER)
   ))
 #endif
+
   {
     mac_createDefaultEthernetAddr((uint8_t *) &(ETHBUF(uip_buf)->src.addr[0]));
   }
@@ -487,6 +528,15 @@ void mac_LowpanToEthernet(void)
     //Some IP packets have link layer in them, need to change them around!
     mac_translateIPLinkLayer(ll_8023_type);
   }
+ 
+#if UIP_CONF_IPV6_RPL
+/* We won't play ping-pong with the host! */
+    if(uip_ipaddr_cmp(&last_sender, &UIP_IP_BUF->srcipaddr)) {
+        PRINTF("siclow_ethernet: Destination off-link but no route\n");
+        uip_len=0;
+        return;
+    }
+#endif
 
   PRINTF("Low2Eth: Sending packet to ethernet\n\r");
 
@@ -564,7 +614,6 @@ int8_t mac_translateIcmpLinkLayer(lltype_t target)
   uint8_t llbuf[16];
 
   //Figure out offset to start of options
-//  printf("mac_translateicmplinklayer...");
   switch(UIP_ICMP_BUF->type) {
     case ICMP6_NS:
     case ICMP6_NA:
@@ -636,7 +685,6 @@ int8_t mac_translateIcmpLinkLayer(lltype_t target)
       
       //Translate addresses
       if (target == ll_802154_type) {
-//       printf("createsicslowpanlongaddr");
         mac_createSicslowpanLongAddr(llbuf, (uip_lladdr_t *)UIP_ICMP_OPTS(icmp_opt_offset)->data);
       } else {
 #if !UIP_CONF_SIMPLE_JACKDAW_ADDR_TRANS
@@ -664,7 +712,9 @@ int8_t mac_translateIcmpLinkLayer(lltype_t target)
 
       //We broke ICMP checksum, be sure to fix that
       UIP_ICMP_BUF->icmpchksum = 0;
-      UIP_ICMP_BUF->icmpchksum = ~uip_icmp6chksum(); 
+#if UIP_CONF_IPV6   //allow non ipv6 builds
+      UIP_ICMP_BUF->icmpchksum = ~uip_icmp6chksum();
+#endif
 
       //Finally set up next run in while loop
       len -= 8 * UIP_ICMP_OPTS(icmp_opt_offset)->length;
@@ -994,10 +1044,12 @@ mac_log_802_15_4_rx(const uint8_t* buf, size_t len) {
     usb_eth_send(raw_buf, sendlen, 0);
   }
 }
-
+/* The rf230bb send driver may call this routine via  RF230BB_HOOK_IS_SEND_ENABLED */
 bool
 mac_is_send_enabled(void) {
-	return usbstick_mode.sendToRf;
+  if ((usbstick_mode.sendToRf == 0) || (usbstick_mode.sneeze != 0)) return 0;
+  return 1;
+//return usbstick_mode.sendToRf;
 }
 
 /** @} */

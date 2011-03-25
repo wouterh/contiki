@@ -30,13 +30,15 @@
  * This file is part of libmc1322x: see http://mc1322x.devl.org
  * for details. 
  *
- * $Id: isr.h,v 1.5 2010/11/07 14:26:24 maralvira Exp $
+ *
  */
 
 #ifndef ISR_H
 #define ISR_H
 
 #define INTBASE        (0x80020000)
+
+#include <stdint.h>
 
 /* Structure-based ITC access */
 #define __INTERRUPT_union(x)		  \
@@ -163,6 +165,8 @@ extern void cal_isr(void) __attribute__((weak));
 extern void uart1_isr(void) __attribute__((weak));
 
 extern void maca_isr(void) __attribute__((weak));
+
+extern void asm_isr(void) __attribute__((weak));
 
 
 #endif

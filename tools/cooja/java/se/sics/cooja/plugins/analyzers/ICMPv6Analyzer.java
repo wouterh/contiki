@@ -14,9 +14,10 @@ public class ICMPv6Analyzer extends PacketAnalyzer {
     public static final int NEIGHBOR_SOLICITATION = 135;
     public static final int NEIGHBOR_ADVERTISEMENT = 136;
 
-    public static final int RPL_CODE_DIS = 1; /* DIS message */
-    public static final int RPL_CODE_DIO = 2; /* DIO message */
-    public static final int RPL_CODE_DAO = 4;/* DAO message */
+    public static final int RPL_CODE_DIS = 0; /* DIS message */
+    public static final int RPL_CODE_DIO = 1; /* DIO message */
+    public static final int RPL_CODE_DAO = 2;/* DAO message */
+    public static final int RPL_CODE_DAO_ACK = 3;/* DAO ACK message */
     
     public static final int FLAG_ROUTER = 0x80;
     public static final int FLAG_SOLICITED = 0x40;
@@ -60,11 +61,26 @@ public class ICMPv6Analyzer extends PacketAnalyzer {
                 break;
             case RPL_CODE_DIO:
                 brief.append("DIO");
-                verbose.append("DIO");
+                verbose.append("DIO<br>");
+                
+                int instanceID = packet.get(4) & 0xff;
+                int version = packet.get(5) & 0xff;
+                int rank = ((packet.get(6) & 0xff) << 8) + (packet.get(7) & 0xff);
+                int mop = (packet.get(8) >> 3) & 0x07;
+                int dtsn = packet.get(9);
+                
+                verbose.append(" InstanceID: " + instanceID + " Version: " + version +
+                        " Rank:" + rank + " MOP: " + mop + " DTSN: " + dtsn);
+                packet.consumeBytesStart(8);
+
                 break;
             case RPL_CODE_DAO:
                 brief.append("DAO");
                 verbose.append("DAO");
+                break;
+            case RPL_CODE_DAO_ACK:
+                brief.append("DAO ACK");
+                verbose.append("DAO ACK");
                 break;
             default:
                 brief.append(code);
@@ -81,5 +97,4 @@ public class ICMPv6Analyzer extends PacketAnalyzer {
     public boolean matchPacket(Packet packet) {
         return packet.level == NETWORK_LEVEL && packet.lastDispatch == ICMPv6_DISPATCH;
     }
-
 }

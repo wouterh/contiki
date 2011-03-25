@@ -28,7 +28,7 @@
  *
  * This file is part of the Contiki operating system.
  *
- * $Id: csma.c,v 1.22 2010/10/24 21:07:00 adamdunkels Exp $
+ * $Id: csma.c,v 1.27 2011/01/25 14:24:38 adamdunkels Exp $
  */
 
 /**
@@ -53,6 +53,8 @@
 
 #include <string.h>
 
+#include <stdio.h>
+
 #define DEBUG 0
 #if DEBUG
 #include <stdio.h>
@@ -65,7 +67,7 @@
 #ifdef CSMA_CONF_MAX_MAC_TRANSMISSIONS
 #define CSMA_MAX_MAC_TRANSMISSIONS CSMA_CONF_MAX_MAC_TRANSMISSIONS
 #else
-#define CSMA_MAX_MAC_TRANSMISSIONS 1
+#define CSMA_MAX_MAC_TRANSMISSIONS 3
 #endif /* CSMA_CONF_MAX_MAC_TRANSMISSIONS */
 #endif /* CSMA_MAX_MAC_TRANSMISSIONS */
 
@@ -77,36 +79,99 @@
 struct queued_packet {
   struct queued_packet *next;
   struct queuebuf *buf;
-  struct ctimer retransmit_timer;
+  /*  struct ctimer retransmit_timer;*/
   mac_callback_t sent;
   void *cptr;
   uint8_t transmissions, max_transmissions;
   uint8_t collisions, deferrals;
 };
 
-#define MAX_QUEUED_PACKETS 8
+#define MAX_QUEUED_PACKETS 6
 MEMB(packet_memb, struct queued_packet, MAX_QUEUED_PACKETS);
+LIST(queued_packet_list);
+
+static struct ctimer transmit_timer;
+
+static uint8_t rdc_is_transmitting;
 
 static void packet_sent(void *ptr, int status, int num_transmissions);
 
 /*---------------------------------------------------------------------------*/
-static void
-retransmit_packet(void *ptr)
+static clock_time_t
+default_timebase(void)
 {
-  struct queued_packet *q = ptr;
+  clock_time_t time;
+  /* The retransmission time must be proportional to the channel
+     check interval of the underlying radio duty cycling layer. */
+  time = NETSTACK_RDC.channel_check_interval();
 
-  queuebuf_to_packetbuf(q->buf);
-  PRINTF("csma: resending number %d %p\n", q->transmissions, q);
-  NETSTACK_RDC.send(packet_sent, q);
+  /* If the radio duty cycle has no channel check interval (i.e., it
+     does not turn the radio off), we make the retransmission time
+     proportional to the configured MAC channel check rate. */
+  if(time == 0) {
+    time = CLOCK_SECOND / NETSTACK_RDC_CHANNEL_CHECK_RATE;
+  }
+  return time;
 }
 /*---------------------------------------------------------------------------*/
 static void
-free_packet(struct queued_packet *q)
+transmit_queued_packet(void *ptr)
 {
-  //  printf("free_packet %p\n", q);
-  ctimer_stop(&q->retransmit_timer);
-  queuebuf_free(q->buf);
-  memb_free(&packet_memb, q);
+  /*  struct queued_packet *q = ptr;*/
+  struct queued_packet *q;
+
+  /* Don't transmit a packet if the RDC is still transmitting the
+     previous one. */
+  if(rdc_is_transmitting) {
+    return;
+  }
+  
+  //  printf("q %d\n", list_length(queued_packet_list));
+
+  q = list_head(queued_packet_list);
+
+  if(q != NULL) {
+    queuebuf_to_packetbuf(q->buf);
+    PRINTF("csma: sending number %d %p, queue len %d\n", q->transmissions, q,
+           list_length(queued_packet_list));
+    //    printf("s %d\n", packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u8[0]);
+    rdc_is_transmitting = 1;
+    NETSTACK_RDC.send(packet_sent, q);
+  }
+}
+/*---------------------------------------------------------------------------*/
+static void
+start_transmission_timer(void)
+{
+  PRINTF("csma: start_transmission_timer, queue len %d\n",
+         list_length(queued_packet_list));
+  if(list_length(queued_packet_list) > 0) {
+    if(ctimer_expired(&transmit_timer)) {
+      ctimer_set(&transmit_timer, 0,
+                 transmit_queued_packet, NULL);
+    }
+  }
+}
+/*---------------------------------------------------------------------------*/
+static void
+free_queued_packet(void)
+{
+  struct queued_packet *q;
+
+  //  printf("q %d\n", list_length(queued_packet_list));
+
+  q = list_head(queued_packet_list);
+
+  if(q != NULL) {
+    queuebuf_free(q->buf);
+    list_remove(queued_packet_list, q);
+    memb_free(&packet_memb, q);
+    PRINTF("csma: free_queued_packet, queue length %d\n",
+           list_length(queued_packet_list));
+    if(list_length(queued_packet_list) > 0) {
+      ctimer_set(&transmit_timer, default_timebase(), transmit_queued_packet, NULL);
+    }
+  }
 }
 /*---------------------------------------------------------------------------*/
 static void
@@ -117,8 +182,9 @@ packet_sent(void *ptr, int status, int num_transmissions)
   mac_callback_t sent;
   void *cptr;
   int num_tx;
+  int backoff_transmissions;
 
-  //  printf("packet_sent %p\n", q);
+  rdc_is_transmitting = 0;
   
   switch(status) {
   case MAC_TX_OK:
@@ -156,29 +222,30 @@ packet_sent(void *ptr, int status, int num_transmissions)
 
     /* The retransmission time must be proportional to the channel
        check interval of the underlying radio duty cycling layer. */
-    time = NETSTACK_RDC.channel_check_interval();
-
-    /* If the radio duty cycle has no channel check interval (i.e., it
-       does not turn the radio off), we make the retransmission time
-       proportional to the configured MAC channel check rate. */
-    if(time == 0) {
-      time = CLOCK_SECOND / NETSTACK_RDC_CHANNEL_CHECK_RATE;
-    }
+    time = default_timebase();
 
     /* The retransmission time uses a linear backoff so that the
        interval between the transmissions increase with each
        retransmit. */
-    time = time + (random_rand() % ((q->transmissions + 1) * 2 * time));
+    backoff_transmissions = q->transmissions + 1;
 
-    if(q->transmissions + q->collisions < q->max_transmissions) {
+    /* Clamp the number of backoffs so that we don't get a too long
+       timeout here, since that will delay all packets in the
+       queue. */
+    if(backoff_transmissions > 3) {
+      backoff_transmissions = 3;
+    }
+    time = time + (random_rand() % (backoff_transmissions * time));
+
+    if(q->transmissions < q->max_transmissions) {
       PRINTF("csma: retransmitting with time %lu %p\n", time, q);
-      ctimer_set(&q->retransmit_timer, time,
-                 retransmit_packet, q);
+      ctimer_set(&transmit_timer, time,
+                 transmit_queued_packet, NULL);
     } else {
-      PRINTF("csma: drop after %d\n", q->transmissions);
-      queuebuf_to_packetbuf(q->buf);
-      free_packet(q);
-      //      printf("call 1 %p\n", cptr);
+      PRINTF("csma: drop with status %d after %d transmissions, %d collisions\n",
+             status, q->transmissions, q->collisions);
+      /*      queuebuf_to_packetbuf(q->buf);*/
+      free_queued_packet();
       mac_call_sent_callback(sent, cptr, status, num_tx);
     }
   } else {
@@ -187,9 +254,8 @@ packet_sent(void *ptr, int status, int num_transmissions)
     } else {
       PRINTF("csma: rexmit failed %d: %d\n", q->transmissions, status);
     }
-    queuebuf_to_packetbuf(q->buf);
-    free_packet(q);
-    //    printf("call 2 %p\n", cptr);
+    /*    queuebuf_to_packetbuf(q->buf);*/
+    free_queued_packet();
     mac_call_sent_callback(sent, cptr, status, num_tx);
   }
 }
@@ -202,30 +268,47 @@ send_packet(mac_callback_t sent, void *ptr)
   
   packetbuf_set_attr(PACKETBUF_ATTR_MAC_SEQNO, seqno++);
   
-  /* Remember packet for later. */
-  q = memb_alloc(&packet_memb);
-  if(q != NULL) {
-    //    printf("send_packet %p\n", q);
-    q->buf = queuebuf_new_from_packetbuf();
+  /* If the packet is a broadcast, do not allocate a queue
+     entry. Instead, just send it out.  */
+  if(!rimeaddr_cmp(packetbuf_addr(PACKETBUF_ADDR_RECEIVER),
+                   &rimeaddr_null)) {
+
+    /* Remember packet for later. */
+    q = memb_alloc(&packet_memb);
     if(q != NULL) {
-      if(packetbuf_attr(PACKETBUF_ATTR_MAX_MAC_TRANSMISSIONS) == 0) {
-        /* Use default configuration for max transmissions */
-        q->max_transmissions = CSMA_MAX_MAC_TRANSMISSIONS;
-      } else {
-        q->max_transmissions =
-          packetbuf_attr(PACKETBUF_ATTR_MAX_MAC_TRANSMISSIONS);
+      q->buf = queuebuf_new_from_packetbuf();
+      if(q->buf != NULL) {
+        if(packetbuf_attr(PACKETBUF_ATTR_MAX_MAC_TRANSMISSIONS) == 0) {
+          /* Use default configuration for max transmissions */
+          q->max_transmissions = CSMA_MAX_MAC_TRANSMISSIONS;
+        } else {
+          q->max_transmissions =
+            packetbuf_attr(PACKETBUF_ATTR_MAX_MAC_TRANSMISSIONS);
+        }
+        q->transmissions = 0;
+        q->collisions = 0;
+        q->deferrals = 0;
+        q->sent = sent;
+        q->cptr = ptr;
+        if(packetbuf_attr(PACKETBUF_ATTR_PACKET_TYPE) ==
+           PACKETBUF_ATTR_PACKET_TYPE_ACK) {
+          list_push(queued_packet_list, q);
+        } else {
+          list_add(queued_packet_list, q);
+        }
+        start_transmission_timer();
+        return;
       }
-      q->transmissions = 0;
-      q->collisions = 0;
-      q->deferrals = 0;
-      q->sent = sent;
-      q->cptr = ptr;
-      NETSTACK_RDC.send(packet_sent, q);
-      return;
+      memb_free(&packet_memb, q);
+      PRINTF("csma: could not allocate queuebuf, will drop if collision or noack\n");
     }
-    memb_free(&packet_memb, q);
+    PRINTF("csma: could not allocate memb, will drop if collision or noack\n");
+  } else {
+    PRINTF("csma: send broadcast (%d) or without retransmissions (%d)\n",
+           !rimeaddr_cmp(packetbuf_addr(PACKETBUF_ADDR_RECEIVER),
+                         &rimeaddr_null),
+           packetbuf_attr(PACKETBUF_ATTR_MAX_MAC_TRANSMISSIONS));
   }
-  PRINTF("csma: could not allocate queuebuf, will drop if collision or noack\n");
   NETSTACK_RDC.send(sent, ptr);
 }
 /*---------------------------------------------------------------------------*/
@@ -260,6 +343,7 @@ static void
 init(void)
 {
   memb_init(&packet_memb);
+  rdc_is_transmitting = 0;
 }
 /*---------------------------------------------------------------------------*/
 const struct mac_driver csma_driver = {

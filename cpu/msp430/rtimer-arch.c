@@ -28,7 +28,7 @@
  *
  * This file is part of the Contiki operating system.
  *
- * $Id: rtimer-arch.c,v 1.15 2010/09/13 20:51:09 nifi Exp $
+ * $Id: rtimer-arch.c,v 1.17 2010/11/27 15:27:20 nifi Exp $
  */
 
 /**
@@ -44,6 +44,7 @@
 #include "sys/energest.h"
 #include "sys/rtimer.h"
 #include "sys/process.h"
+#include "dev/watchdog.h"
 
 #define DEBUG 0
 #if DEBUG
@@ -57,10 +58,15 @@
 interrupt(TIMERA0_VECTOR) timera0 (void) {
   ENERGEST_ON(ENERGEST_TYPE_IRQ);
 
+  watchdog_start();
+
   rtimer_run_next();
+
   if(process_nevents() > 0) {
     LPM4_EXIT;
   }
+
+  watchdog_stop();
 
   ENERGEST_OFF(ENERGEST_TYPE_IRQ);
 }
@@ -93,8 +99,6 @@ rtimer_arch_schedule(rtimer_clock_t t)
 {
   PRINTF("rtimer_arch_schedule time %u\n", t);
 
-  TACTL &= ~MC1;
   TACCR0 = t;
-  TACTL |= MC1;
 }
 /*---------------------------------------------------------------------------*/

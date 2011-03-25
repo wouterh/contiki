@@ -14,6 +14,8 @@ my $baud = '115200';
 my $verbose;
 my $rts = 'rts';
 my $command = '';
+my $first_delay = 50;
+my $second_delay = 100;
 my $do_exit;
 my $zerolen;
 
@@ -22,9 +24,11 @@ GetOptions ('file=s' => \$filename,
 	    'zerolen' => \$zerolen,
 	    'terminal=s' => \$term, 
 	    'verbose' => \$verbose, 
-	    'baud=s' => \$baud,
+	    'u|baud=s' => \$baud,
 	    'rts=s' => \$rts,
 	    'command=s' => \$command,
+	    'a=s' => \$first_delay,
+	    'b=s' => \$second_delay,
 	    'exit' => \$do_exit,
     ) or die 'bad options';
 
@@ -37,12 +41,14 @@ if($filename eq '') {
     print "       -f required: binary file to load\n";
     print "       -s optional: secondary binary file to send\n";
     print "       -z optional: send a zero length file as secondary\n";
-    print "       -t terminal default: /dev/ttyUSB0\n";
-    print "       -b baud rate default: 115200\n";
+    print "       -t, terminal default: /dev/ttyUSB0\n";
+    print "       -u, --baud baud rate default: 115200\n";
     print "       -r [none|rts] flow control default: rts\n";
     print "       -c command to run for autoreset: \n";
     print "              e.g. -c 'bbmc -l redbee-econotag -i 0 reset'\n";
     print "       -e exit instead of dropping to terminal display\n";
+    print "       -a first  intercharacter delay, passed to usleep\n";
+    print "       -b second intercharacter delay, passed to usleep\n";
     print "\n";
     print "anything on the command line is sent\n";
     print "after all of the files.\n\n";
@@ -121,8 +127,8 @@ while(1) {
 	    my $i = 1;
 	    while(read(FILE, $c, 1)) {
 		$i++;
-		usleep(50); # this is as fast is it can go... 
-		usleep(50) if ($s==1);
+		usleep($first_delay)  if ( $s == 0 );
+		usleep($second_delay) if ( $s == 1 );
 		$ob->write($c);
 	    }
 	}

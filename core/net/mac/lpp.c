@@ -28,7 +28,7 @@
  *
  * This file is part of the Contiki operating system.
  *
- * $Id: lpp.c,v 1.38 2010/10/20 15:23:43 adamdunkels Exp $
+ * $Id: lpp.c,v 1.40 2010/12/02 15:55:17 dak664 Exp $
  */
 
 /**
@@ -104,9 +104,9 @@
    is 0 which will make compilation fail due to a modulo operation in
    the code. To ensure that OFF_TIME is greater than zero, we use the
    construct below. */
-#if OFF_TIME == 0
+#if OFF_TIME < 2
 #undef OFF_TIME
-#define OFF_TIME 1
+#define OFF_TIME 2
 #endif
 
 struct announcement_data {
@@ -240,6 +240,8 @@ register_encounter(rimeaddr_t *neighbor, clock_time_t time)
     list_add(encounter_list, e);
   }
 }
+
+#if WITH_ENCOUNTER_OPTIMIZATION
 /*---------------------------------------------------------------------------*/
 static void
 turn_radio_on_callback(void *packet)
@@ -252,6 +254,8 @@ turn_radio_on_callback(void *packet)
 
   /*  printf("enc\n");*/
 }
+#endif /* WITH_ENCOUNTER_OPTIMIZATION */
+
 /*---------------------------------------------------------------------------*/
 static void
 stream_off(void *dummy)
@@ -271,7 +275,6 @@ stream_off(void *dummy)
 static void
 turn_radio_on_for_neighbor(rimeaddr_t *neighbor, struct queue_list_item *i)
 {
-  struct encounter *e;
 
 #if WITH_STREAMING
   if(packetbuf_attr(PACKETBUF_ATTR_PACKET_TYPE) ==
@@ -296,6 +299,8 @@ turn_radio_on_for_neighbor(rimeaddr_t *neighbor, struct queue_list_item *i)
   }
 
 #if WITH_ENCOUNTER_OPTIMIZATION
+  struct encounter *e;
+  
   /* We go through the list of encounters to find if we have recorded
      an encounter with this particular neighbor. If so, we can compute
      the time for the next expected encounter and setup a ctimer to
@@ -381,18 +386,19 @@ remove_queued_packet(struct queue_list_item *i, uint8_t tx_ok)
 }
 /*---------------------------------------------------------------------------*/
 static void
+remove_queued_old_packet_callback(void *item)
+{
+  remove_queued_packet(item, 0);
+}
+
+#if WITH_PENDING_BROADCAST
+/*---------------------------------------------------------------------------*/
+static void
 remove_queued_broadcast_packet_callback(void *item)
 {
   remove_queued_packet(item, 1);
 }
 /*---------------------------------------------------------------------------*/
-static void
-remove_queued_old_packet_callback(void *item)
-{
-  remove_queued_packet(item, 0);
-}
-/*---------------------------------------------------------------------------*/
-#if WITH_PENDING_BROADCAST
 static void
 set_broadcast_flag(struct queue_list_item *i, uint8_t flag)
 {
@@ -507,7 +513,6 @@ static int
 dutycycle(void *ptr)
 {
   struct ctimer *t = ptr;
-  struct queue_list_item *p;
 	
   PT_BEGIN(&dutycycle_pt);
 
@@ -643,7 +648,7 @@ send_packet(mac_callback_t sent, void *ptr)
   packetbuf_compact();
 
   packetbuf_set_attr(PACKETBUF_ATTR_MAC_ACK, 1);
-  
+
   {
     int hdrlen = NETSTACK_FRAMER.create();
     if(hdrlen == 0) {
@@ -719,6 +724,40 @@ send_packet(mac_callback_t sent, void *ptr)
       mac_call_sent_callback(sent, ptr, MAC_TX_ERR, 0);
     }
   }
+}
+/*---------------------------------------------------------------------------*/
+static int
+detect_ack(void)
+{
+#define INTER_PACKET_INTERVAL              RTIMER_ARCH_SECOND / 5000
+#define ACK_LEN 3
+#define AFTER_ACK_DETECTECT_WAIT_TIME      RTIMER_ARCH_SECOND / 1000
+  rtimer_clock_t wt;
+  uint8_t ack_received = 0;
+  
+  wt = RTIMER_NOW();
+  leds_on(LEDS_GREEN);
+  while(RTIMER_CLOCK_LT(RTIMER_NOW(), wt + INTER_PACKET_INTERVAL)) { }
+  leds_off(LEDS_GREEN);
+  /* Check for incoming ACK. */
+  if((NETSTACK_RADIO.receiving_packet() ||
+      NETSTACK_RADIO.pending_packet() ||
+      NETSTACK_RADIO.channel_clear() == 0)) {
+    int len;
+    uint8_t ackbuf[ACK_LEN + 2];
+    
+    wt = RTIMER_NOW();
+    while(RTIMER_CLOCK_LT(RTIMER_NOW(), wt + AFTER_ACK_DETECTECT_WAIT_TIME)) { }
+    
+    len = NETSTACK_RADIO.read(ackbuf, ACK_LEN);
+    if(len == ACK_LEN) {
+      ack_received = 1;
+    }
+  }
+  if(ack_received) {
+    leds_toggle(LEDS_RED);
+  }
+  return ack_received;
 }
 /*---------------------------------------------------------------------------*/
 /**
@@ -830,28 +869,7 @@ input_packet(void)
              neighbors, and are dequeued by the dutycycling function
              instead, after the appropriate time. */
           if(!rimeaddr_cmp(receiver, &rimeaddr_null)) {
-#define INTER_PACKET_INTERVAL              RTIMER_ARCH_SECOND / 5000
-#define ACK_LEN 3
-#define AFTER_ACK_DETECTECT_WAIT_TIME      RTIMER_ARCH_SECOND / 1000
-            rtimer_clock_t wt;
-            uint8_t ack_received = 0;
-            
-            wt = RTIMER_NOW();
-            while(RTIMER_CLOCK_LT(RTIMER_NOW(), wt + INTER_PACKET_INTERVAL)) { }
-            /* Check for incoming ACK. */
-            if((NETSTACK_RADIO.receiving_packet() ||
-                NETSTACK_RADIO.pending_packet() ||
-                NETSTACK_RADIO.channel_clear() == 0)) {
-              int len;
-              uint8_t ackbuf[ACK_LEN];
-
-              wt = RTIMER_NOW();
-              while(RTIMER_CLOCK_LT(RTIMER_NOW(), wt + AFTER_ACK_DETECTECT_WAIT_TIME)) { }
-
-              len = NETSTACK_RADIO.read(ackbuf, ACK_LEN);
-
-            }
-            if(ack_received) {
+            if(detect_ack()) {
               remove_queued_packet(i, 1);
             } else {
               remove_queued_packet(i, 0);

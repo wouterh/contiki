@@ -32,7 +32,6 @@
  *
  * This file is part of the Contiki operating system.
  *
- * $Id: rpl-icmp6.c,v 1.27 2010/11/03 15:41:23 adamdunkels Exp $
  */
 /**
  * \file
@@ -48,7 +47,7 @@
 #include "net/uip-ds6.h"
 #include "net/uip-nd6.h"
 #include "net/uip-icmp6.h"
-#include "net/rpl/rpl.h"
+#include "net/rpl/rpl-private.h"
 #include "net/packetbuf.h"
 
 #include <limits.h>
@@ -59,14 +58,10 @@
 #include "net/uip-debug.h"
 
 /*---------------------------------------------------------------------------*/
-#define RPL_DIO_GROUNDED            0x80
-#define RPL_DIO_DEST_ADV_SUPPORTED  0x40
-#define RPL_DIO_DEST_ADV_TRIGGER    0x20
-#define RPL_DIO_MOP_MASK            0x18
-#define RPL_DIO_MOP_NON_STORING     0x00
-#define RPL_DIO_MOP_STORING         0x10
-#define RPL_DIO_DAG_PREFERENCE_MASK 0x07
-
+#define RPL_DIO_GROUNDED                 0x80
+#define RPL_DIO_MOP_SHIFT                3
+#define RPL_DIO_MOP_MASK                 0x3c
+#define RPL_DIO_PREFERENCE_MASK          0x07
 
 #define UIP_IP_BUF       ((struct uip_ip_hdr *)&uip_buf[UIP_LLH_LEN])
 #define UIP_ICMP_BUF     ((struct uip_icmp_hdr *)&uip_buf[uip_l2_l3_hdr_len])
@@ -146,7 +141,7 @@ dis_output(uip_ipaddr_t *addr)
   /*      0                   1                   2        */
   /*      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3  */
   /*     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
-  /*     |           Reserved            |   Option(s)...  */
+  /*     |     Flags     |   Reserved    |   Option(s)...  */
   /*     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
   buffer = UIP_ICMP_PAYLOAD;
@@ -154,13 +149,12 @@ dis_output(uip_ipaddr_t *addr)
 
   if(addr == NULL) {
     PRINTF("RPL: Sending a DIS\n");
-    uip_create_linklocal_allrouters_mcast(&tmpaddr);
+    uip_create_linklocal_rplnodes_mcast(&tmpaddr);
     addr = &tmpaddr;
   } else {
     PRINTF("RPL: Sending a unicast DIS\n");
   }
   uip_icmp6_send(addr, ICMP6_RPL, RPL_CODE_DIS, 2);
-
 }
 /*---------------------------------------------------------------------------*/
 static void
@@ -191,7 +185,7 @@ dio_input(void)
                               packetbuf_addr(PACKETBUF_ADDR_SENDER),
                               0, NBR_REACHABLE)) != NULL) {
       /* set reachable timer */
-      stimer_set(&(nbr->reachable), UIP_ND6_REACHABLE_TIME);
+      stimer_set(&nbr->reachable, UIP_ND6_REACHABLE_TIME / 1000);
       PRINTF("RPL: Neighbor added to neighbor cache ");
       PRINT6ADDR(&from);
       PRINTF(", ");
@@ -216,9 +210,8 @@ dio_input(void)
   PRINTF("RPL: Incoming DIO rank %u\n", (unsigned)dio.rank);
 
   dio.grounded = buffer[i] & RPL_DIO_GROUNDED;
-  dio.dst_adv_trigger = buffer[i] & RPL_DIO_DEST_ADV_TRIGGER;
-  dio.dst_adv_supported = buffer[i] & RPL_DIO_DEST_ADV_SUPPORTED;
-  dio.preference = buffer[i++] & RPL_DIO_DAG_PREFERENCE_MASK;
+  dio.mop = (buffer[i]& RPL_DIO_MOP_MASK) >> RPL_DIO_MOP_SHIFT;
+  dio.preference = buffer[i++] & RPL_DIO_PREFERENCE_MASK;
 
   dio.dtsn = buffer[i++];
   /* two reserved bytes */
@@ -243,12 +236,38 @@ dio_input(void)
       return;
     }
 
+    PRINTF("RPL: DIO suboption %u, length: %u\n", subopt_type, len - 2);
+
     switch(subopt_type) {
-    case RPL_DIO_SUBOPT_DAG_MC:
-      if(len < 7) {
+    case RPL_DIO_SUBOPT_DAG_METRIC_CONTAINER:
+      if(len < 6) {
         PRINTF("RPL: Invalid DAG MC, len = %d\n", len);
 	RPL_STAT(rpl_stats.malformed_msgs++);
         return;
+      }
+      dio.mc.type = buffer[i + 2];
+      dio.mc.flags = buffer[i + 3];
+      dio.mc.aggr = buffer[i + 4] >> 4;
+      dio.mc.prec = buffer[i + 4] & 0xf;
+      dio.mc.length = buffer[i + 5];
+
+      if(dio.mc.type == RPL_DAG_MC_ETX) {
+        dio.mc.obj.etx = buffer[i + 6] << 8;
+        dio.mc.obj.etx |= buffer[i + 7];
+
+        PRINTF("RPL: DAG MC: type %u, flags %u, aggr %u, prec %u, length %u, ETX %u\n",
+	       (unsigned)dio.mc.type,  
+	       (unsigned)dio.mc.flags, 
+	       (unsigned)dio.mc.aggr, 
+	       (unsigned)dio.mc.prec, 
+	       (unsigned)dio.mc.length, 
+	       (unsigned)dio.mc.obj.etx);
+      } else if(dio.mc.type == RPL_DAG_MC_ENERGY) {
+        dio.mc.obj.energy.flags = buffer[i + 6];
+        dio.mc.obj.energy.energy_est = buffer[i + 7];
+      } else {
+       PRINTF("RPL: Unhandled DAG MC type: %u\n", (unsigned)dio.mc.type);
+       return;
       }
       break;
     case RPL_DIO_SUBOPT_ROUTE_INFO:
@@ -257,6 +276,7 @@ dio_input(void)
 	RPL_STAT(rpl_stats.malformed_msgs++);
         return;
       }
+
       /* flags is both preference and flags for now */
       dio.destination_prefix.length = buffer[i + 2];
       dio.destination_prefix.flags = buffer[i + 3];
@@ -275,6 +295,12 @@ dio_input(void)
 
       break;
     case RPL_DIO_SUBOPT_DAG_CONF:
+      if(len != 16) {
+        PRINTF("RPL: Invalid DAG configuration option, len = %d\n", len);
+	RPL_STAT(rpl_stats.malformed_msgs++);
+        return;
+      }
+
       /* Path control field not yet implemented - at i + 2 */
       dio.dag_intdoubl = buffer[i + 3];
       dio.dag_intmin = buffer[i + 4];
@@ -282,9 +308,13 @@ dio_input(void)
       dio.dag_max_rankinc = (buffer[i + 6] << 8) | buffer[i + 7];
       dio.dag_min_hoprankinc = (buffer[i + 8] << 8) | buffer[i + 9];
       dio.ocp = (buffer[i + 10] << 8) | buffer[i + 11];
-      PRINTF("RPL: DIO Conf:dbl=%d, min=%d red=%d maxinc=%d mininc=%d ocp=%d\n",
+      /* buffer + 12 is reserved */
+      dio.default_lifetime = buffer[i + 13];
+      dio.lifetime_unit = (buffer[i + 14] << 8) | buffer[i + 15];
+      PRINTF("RPL: DIO Conf:dbl=%d, min=%d red=%d maxinc=%d mininc=%d ocp=%d d_l=%u l_u=%u\n",
              dio.dag_intdoubl, dio.dag_intmin, dio.dag_redund,
-             dio.dag_max_rankinc, dio.dag_min_hoprankinc, dio.ocp);
+             dio.dag_max_rankinc, dio.dag_min_hoprankinc, dio.ocp,
+             dio.default_lifetime, dio.lifetime_unit);
       break;
     case RPL_DIO_SUBOPT_PREFIX_INFO:
       if(len != 32) {
@@ -301,6 +331,9 @@ dio_input(void)
       PRINTF("RPL: Copying prefix information\n");
       memcpy(&dio.prefix_info.prefix, &buffer[i + 16], 16);
       break;
+    default:
+      PRINTF("RPL: Unsupported suboption type in DIO: %u\n",
+	(unsigned)subopt_type);
     }
   }
 
@@ -314,7 +347,7 @@ dio_output(rpl_dag_t *dag, uip_ipaddr_t *uc_addr)
   int pos;
   uip_ipaddr_t addr;
 
-  /* DAG Information Solicitation */
+  /* DAG Information Object */
   pos = 0;
 
   buffer = UIP_ICMP_PAYLOAD;
@@ -323,24 +356,51 @@ dio_output(rpl_dag_t *dag, uip_ipaddr_t *uc_addr)
   buffer[pos++] = dag->rank >> 8;
   buffer[pos++] = dag->rank & 0xff;
 
+  buffer[pos] = 0;
   if(dag->grounded) {
     buffer[pos] |= RPL_DIO_GROUNDED;
   }
-  /* Set dst_adv_trigger and dst_adv_supported. */
-  buffer[pos] |= RPL_DIO_DEST_ADV_SUPPORTED | RPL_DIO_DEST_ADV_TRIGGER;
+
+  buffer[pos] = dag->mop << RPL_DIO_MOP_SHIFT;
   pos++;
 
   buffer[pos++] = ++dag->dtsn_out;
+
   /* reserved 2 bytes */
-  pos += 2;
+  buffer[pos++] = 0; /* flags */
+  buffer[pos++] = 0; /* reserved */
 
   memcpy(buffer + pos, &dag->dag_id, sizeof(dag->dag_id));
   pos += 16;
 
+  if(dag->mc.type != RPL_DAG_MC_NONE) {
+    dag->of->update_metric_container(dag);
+
+    buffer[pos++] = RPL_DIO_SUBOPT_DAG_METRIC_CONTAINER;
+    buffer[pos++] = 6;
+    buffer[pos++] = dag->mc.type;
+    buffer[pos++] = dag->mc.flags;
+    buffer[pos] = dag->mc.aggr << 4;
+    buffer[pos++] |= dag->mc.prec;
+    if(dag->mc.type == RPL_DAG_MC_ETX) {
+      buffer[pos++] = 2;
+      buffer[pos++] = dag->mc.obj.etx >> 8;
+      buffer[pos++] = dag->mc.obj.etx & 0xff;
+    } else if(dag->mc.type == RPL_DAG_MC_ENERGY) {
+      buffer[pos++] = 2;
+      buffer[pos++] = dag->mc.obj.energy.flags;
+      buffer[pos++] = dag->mc.obj.energy.energy_est;
+    } else {
+      PRINTF("RPL: Unable to send DIO because of unhandled DAG MC type %u\n",
+	(unsigned)dag->mc.type);
+      return;
+    }
+  }
+
   /* always add a sub-option for DAG configuration */
   buffer[pos++] = RPL_DIO_SUBOPT_DAG_CONF;
-  buffer[pos++] = 10;
-  buffer[pos++] = 0; /* PCS */
+  buffer[pos++] = 14;
+  buffer[pos++] = 0; /* No Auth, PCS = 0 */
   buffer[pos++] = dag->dio_intdoubl;
   buffer[pos++] = dag->dio_intmin;
   buffer[pos++] = dag->dio_redundancy;
@@ -348,9 +408,13 @@ dio_output(rpl_dag_t *dag, uip_ipaddr_t *uc_addr)
   buffer[pos++] = dag->max_rankinc & 0xff;
   buffer[pos++] = dag->min_hoprankinc >> 8;
   buffer[pos++] = dag->min_hoprankinc & 0xff;
-  /* OCP is now last in the DAG_CONF option */
+  /* OCP is in the DAG_CONF option */
   buffer[pos++] = dag->of->ocp >> 8;
   buffer[pos++] = dag->of->ocp & 0xff;
+  buffer[pos++] = 0; /* reserved */
+  buffer[pos++] = dag->default_lifetime;
+  buffer[pos++] = dag->lifetime_unit >> 8;
+  buffer[pos++] = dag->lifetime_unit & 0xff;
 
   /* if prefix info length > 0 then we have a prefix to send! */
   if(dag->prefix_info.length > 0) {
@@ -380,7 +444,7 @@ dio_output(rpl_dag_t *dag, uip_ipaddr_t *uc_addr)
   if(uc_addr == NULL) {
     PRINTF("RPL: Sending a multicast-DIO with rank %u\n",
         (unsigned)dag->rank);
-    uip_create_linklocal_allrouters_mcast(&addr);
+    uip_create_linklocal_rplnodes_mcast(&addr);
     uip_icmp6_send(&addr, ICMP6_RPL, RPL_CODE_DIO, pos);
   } else {
     PRINTF("RPL: Sending unicast-DIO with rank %u to ",
@@ -403,6 +467,8 @@ dao_input(void)
   uint8_t prefixlen;
   uint8_t flags;
   uint8_t subopt_type;
+  uint8_t pathcontrol;
+  uint8_t pathsequence;
   uip_ipaddr_t prefix;
   uip_ds6_route_t *rep;
   uint8_t buffer_length;
@@ -440,7 +506,7 @@ dao_input(void)
   pos++;
   sequence = buffer[pos++];
 
-  /* is the DAGID present ? */
+  /* Is the DAGID present? */
   if(flags & RPL_DAO_D_FLAG) {
     /* currently the DAG ID is ignored since we only use global
        RPL Instance IDs... */
@@ -467,7 +533,9 @@ dao_input(void)
       break;
     case RPL_DIO_SUBOPT_TRANSIT:
       /* path sequence and control ignored */
-      lifetime = get32(buffer, i + 4);
+      pathcontrol = buffer[i + 3];
+      pathsequence = buffer[i + 4];
+      lifetime = buffer[i + 5];
       /* parent address also ignored */
       break;
     }
@@ -479,7 +547,7 @@ dao_input(void)
   PRINTF("\n");
 
   if(lifetime == ZERO_LIFETIME) {
-    /* No-DAO received; invoke the route purging routine. */
+    /* No-Path DAO received; invoke the route purging routine. */
     rep = uip_ds6_route_lookup(&prefix);
     if(rep != NULL && rep->state.saved_lifetime == 0) {
       PRINTF("RPL: Setting expiration timer for prefix ");
@@ -497,20 +565,25 @@ dao_input(void)
   if(learned_from == RPL_ROUTE_FROM_UNICAST_DAO) {
     /* Check if this is a DAO forwarding loop. */
     p = rpl_find_parent(dag, &dao_sender_addr);
-    if(p != NULL && DAG_RANK(p->rank, dag) < DAG_RANK(dag->rank, dag)) {
-      printf("RPL: Loop detected when receiving a unicast DAO from a node with a lower rank! (%u < %u)\n",
+    /* check if this is a new DAO registration with an "illegal" rank */
+    /* if we already route to this node it is likely */
+    if(p != NULL && DAG_RANK(p->rank, dag) < DAG_RANK(dag->rank, dag) 
+      /* && uip_ds6_route_lookup(&prefix) == NULL*/) {
+      PRINTF("RPL: Loop detected when receiving a unicast DAO from a node with a lower rank! (%u < %u)\n",
           DAG_RANK(p->rank, dag), DAG_RANK(dag->rank, dag));
-      rpl_local_repair(dag);
+      p->rank = INFINITE_RANK;
+      p->updated = 1;
       return;
     }
   }
 
   rep = rpl_add_route(dag, &prefix, prefixlen, &dao_sender_addr);
   if(rep == NULL) {
+    RPL_STAT(rpl_stats.mem_overflows++);
     PRINTF("RPL: Could not add a route after receiving a DAO\n");
     return;
   } else {
-    rep->state.lifetime = lifetime;
+    rep->state.lifetime = lifetime * dag->lifetime_unit;
     rep->state.learned_from = learned_from;
   }
 
@@ -576,16 +649,16 @@ dao_output(rpl_parent_t *n, uint32_t lifetime)
   memcpy(buffer + pos, &prefix, (prefixlen + 7) / CHAR_BIT);
   pos += ((prefixlen + 7) / CHAR_BIT);
 
-  /* create a transit information subopt */
+  /* create a transit information subopt (RPL-18)*/
   buffer[pos++] = RPL_DIO_SUBOPT_TRANSIT;
-  buffer[pos++] = 6;
-  buffer[pos++] = 0; /* path seq - ignored */
+  buffer[pos++] = 4;
+  buffer[pos++] = 0; /* flags - ignored */
   buffer[pos++] = 0; /* path control - ignored */
-  set32(buffer, pos, lifetime);
-  pos += 4;
+  buffer[pos++] = 0; /* path seq - ignored */
+  buffer[pos++] = (lifetime / dag->lifetime_unit) & 0xff;
 
   if(n == NULL) {
-    uip_create_linklocal_allnodes_mcast(&addr);
+    uip_create_linklocal_rplnodes_mcast(&addr);
   } else {
     uip_ipaddr_copy(&addr, &n->addr);
   }

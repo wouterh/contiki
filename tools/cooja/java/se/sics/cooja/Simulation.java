@@ -24,7 +24,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $Id: Simulation.java,v 1.67 2010/10/12 10:58:31 fros4943 Exp $
+ * $Id: Simulation.java,v 1.70 2011/01/13 19:05:09 adamdunkels Exp $
  */
 
 package se.sics.cooja;
@@ -295,7 +295,12 @@ public class Simulation extends Observable implements Runnable {
     this.setChanged();
     this.notifyObservers(this);
     logger.info("Simulation main loop stopped, system time: " + System.currentTimeMillis() + 
-        "\tDuration: " + (System.currentTimeMillis() - lastStartTime) + " ms");
+        "\tDuration: " + (System.currentTimeMillis() - lastStartTime) +
+                " ms" +
+                "\tSimulated time " + getSimulationTimeMillis() +
+                " ms\tRatio " +
+                ((double)getSimulationTimeMillis() /
+                 (double)(System.currentTimeMillis() - lastStartTime)));
   }
 
   /**
@@ -674,8 +679,18 @@ public class Simulation extends Observable implements Runnable {
       }
     }
 
+    if (currentRadioMedium != null) {
+      currentRadioMedium.simulationFinishedLoading();
+    }
+
     setChanged();
     notifyObservers(this);
+    
+    /* Execute simulation thread events now, before simulation starts */
+    while (hasPollRequests) {
+      popSimulationInvokes().run();
+    }
+    
     return true;
   }
 
@@ -732,6 +747,11 @@ public class Simulation extends Observable implements Runnable {
    * This method is called just before the simulation is removed.
    */
   public void removed() {
+  	/* Remove radio medium */
+  	if (currentRadioMedium != null) {
+  		currentRadioMedium.removed();
+  	}
+  	
     /* Remove all motes */
     Mote[] motes = getMotes();
     for (Mote m: motes) {

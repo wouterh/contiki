@@ -26,14 +26,14 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * @(#)$Id: contiki-sky-main.c,v 1.84 2010/05/25 21:32:41 joxe Exp $
+ * @(#)$Id: contiki-sky-main.c,v 1.87 2011/01/09 21:03:42 adamdunkels Exp $
  */
 
-#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 
 #include <io.h>
+#include <signal.h>
 
 #include "contiki.h"
 
@@ -72,12 +72,12 @@
 #endif /* UIP_ROUTER_MODULE */
 
 extern const struct uip_router UIP_ROUTER_MODULE;
-
 #endif /* UIP_CONF_ROUTER */
 
 #if DCOSYNCH_CONF_ENABLED
 static struct timer mgt_timer;
 #endif
+extern int msp430_dco_required;
 
 #ifndef WITH_UIP
 #define WITH_UIP 0
@@ -190,6 +190,10 @@ set_gateway(void)
 }
 #endif /* WITH_UIP */
 /*---------------------------------------------------------------------------*/
+#if WITH_TINYOS_AUTO_IDS
+uint16_t TOS_NODE_ID = 0x1234; /* non-zero */
+uint16_t TOS_LOCAL_ADDRESS = 0x1234; /* non-zero */
+#endif /* WITH_TINYOS_AUTO_IDS */
 int
 main(int argc, char **argv)
 {
@@ -200,6 +204,7 @@ main(int argc, char **argv)
   clock_init();
   leds_init();
   leds_on(LEDS_RED);
+
 
   uart1_init(BAUD2UBR(115200)); /* Must come before first printf */
 #if WITH_UIP
@@ -224,8 +229,12 @@ main(int argc, char **argv)
    */
 
   
+#if WITH_TINYOS_AUTO_IDS
+  node_id = TOS_NODE_ID;
+#else /* WITH_TINYOS_AUTO_IDS */
   /* Restore node id if such has been stored in external mem */
   node_id_restore();
+#endif /* WITH_TINYOS_AUTO_IDS */
 
   /* for setting "hardcoded" IEEE 802.15.4 MAC addresses */
 #ifdef IEEE_802154_MAC_ADDRESS
@@ -352,7 +361,7 @@ main(int argc, char **argv)
 
 #if TIMESYNCH_CONF_ENABLED
   timesynch_init();
-  timesynch_set_authority_level(rimeaddr_node_addr.u8[0]);
+  timesynch_set_authority_level((rimeaddr_node_addr.u8[0] << 4) + 16);
 #endif /* TIMESYNCH_CONF_ENABLED */
 
 #if WITH_UIP
@@ -426,12 +435,16 @@ main(int argc, char **argv)
 
 #if DCOSYNCH_CONF_ENABLED
       /* before going down to sleep possibly do some management */
-      if (timer_expired(&mgt_timer)) {
+      if(timer_expired(&mgt_timer)) {
+        watchdog_periodic();
 	timer_reset(&mgt_timer);
 	msp430_sync_dco();
+#if CC2420_CONF_SFD_TIMESTAMPS
+        cc2420_arch_sfd_init();
+#endif /* CC2420_CONF_SFD_TIMESTAMPS */
       }
 #endif
-
+      
       /* Re-enable interrupts and go to sleep atomically. */
       ENERGEST_OFF(ENERGEST_TYPE_CPU);
       ENERGEST_ON(ENERGEST_TYPE_LPM);
@@ -440,13 +453,17 @@ main(int argc, char **argv)
 	 were awake. */
       energest_type_set(ENERGEST_TYPE_IRQ, irq_energest);
       watchdog_stop();
-      _BIS_SR(GIE | SCG0 | SCG1 | CPUOFF); /* LPM3 sleep. This
-					      statement will block
-					      until the CPU is
-					      woken up by an
-					      interrupt that sets
-					      the wake up flag. */
-
+      /* check if the DCO needs to be on - if so - only LPM 1 */
+      if (msp430_dco_required) {
+	_BIS_SR(GIE | CPUOFF); /* LPM1 sleep for DMA to work!. */
+      } else {
+	_BIS_SR(GIE | SCG0 | SCG1 | CPUOFF); /* LPM3 sleep. This
+						statement will block
+						until the CPU is
+						woken up by an
+						interrupt that sets
+						the wake up flag. */
+      }
       /* We get the current processing time for interrupts that was
 	 done during the LPM and store it for next time around.  */
       dint();

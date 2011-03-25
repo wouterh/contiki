@@ -43,7 +43,10 @@ my $minor = 4;
 my $zone = 0;
 my $sig = 0;
 my $snaplen = 0xffff;
-my $network = 195; # 802.15.4
+my $network = 230; # 802.15.4 no FCS
+
+my $newpacket = 0;
+my $len = 0;
 
 print pack('LSSLLLL',($magic,$major,$minor,$zone,$sig,$snaplen,$network));
 
@@ -55,30 +58,33 @@ while(1) {
 	# match if ends in \n or \r and process line
 	if(($str =~ /\n$/) ||
 	   ($str =~ /\r$/)) {
-	    if($str =~ /^rftest/) {
+	    if($str =~ /^rftest-rx --- len 0x(\w\w)/) {
 		#new packet
 		($sec, $usec) = gettimeofday;
-		print STDERR "rftestline: $sec $usec $str";		
-	    } elsif($str =~ /^\s*data/) {
-		#packet payload
-		print STDERR "dataline: ";		
-		print STDERR $str;
-		$str =~ /data: 0x\d+ (.+)/;
+		$len = hex($1);
+		print STDERR "rftestline: $sec $usec $len $str";		
+		$newpacket = 1;
+	    } elsif($str =~ /^\w+/) {		
+		# dataline, write out pcap entry
+		$str =~ /(.+)/;
+		chomp $str;
 		my @data = split(' ',$1);
-		($len, @data) = @data;
-		#write out pcap entry
-		print pack('LLLL',($sec,$usec,scalar(@data),scalar(@data)+2));
-		print STDERR "new packet: $sec $usec " . scalar(@data) . " " . (scalar(@data)+2) . "\n\r";
-		@frame = @data[0,1];
-		print pack ('CC',(hex($frame[0]),hex($frame[1])));
-		print STDERR "$frame[0] $frame[1] ";
-		foreach my $data (@data[2..scalar(@data)-1]) {
+
+		# do header if this is a new packet
+		if($newpacket == 1) {
+		    $newpacket = 0;
+		    print pack('LLLL',($sec,$usec,$len,$len));
+		    print STDERR "new packet: $sec $usec $len " . ($len) . "\n\r";
+		}
+
+		# packet payload
+		print STDERR "dataline: ";		
+		print STDERR $str . "\n\r";
+
+		foreach my $data (@data) {
 		    print pack ('C',hex($data));
-		    print STDERR "$data ";
 		}		
-		print STDERR "\n\r";
 	    }
-	    print STDERR "\n\r"; 
 	    $str = '';
 	}
     }

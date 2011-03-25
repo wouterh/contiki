@@ -24,7 +24,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $Id: GUI.java,v 1.171 2010/09/24 12:48:04 fros4943 Exp $
+ * $Id: GUI.java,v 1.174 2010/12/10 17:50:48 nifi Exp $
  */
 
 package se.sics.cooja;
@@ -57,6 +57,7 @@ import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.PrintStream;
 import java.io.StringReader;
 import java.lang.reflect.InvocationTargetException;
@@ -74,6 +75,8 @@ import java.util.Properties;
 import java.util.Vector;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 import javax.swing.AbstractAction;
 import javax.swing.Action;
@@ -148,6 +151,10 @@ import se.sics.cooja.util.ExecuteJAR;
  * @author Fredrik Osterlind
  */
 public class GUI extends Observable {
+  private static JFrame frame = null;
+  private static JApplet applet = null;
+  private static final long serialVersionUID = 1L;
+  private static Logger logger = Logger.getLogger(GUI.class);
 
   /**
    * External tools default Win32 settings filename.
@@ -211,26 +218,19 @@ public class GUI extends Observable {
       if (file.getName().endsWith(".csc")) {
         return true;
       }
+      if (file.getName().endsWith(".csc.gz")) {
+        return true;
+      }
 
       return false;
     }
-
     public String getDescription() {
-      return "COOJA Configuration files";
+      return "COOJA Configuration files (.csc or .csc.gz)";
     }
-
     public String toString() {
       return ".csc";
     }
   };
-
-  private static JFrame frame = null;
-
-  private static JApplet applet = null;
-
-  private static final long serialVersionUID = 1L;
-
-  private static Logger logger = Logger.getLogger(GUI.class);
 
   // External tools setting names
   public static Properties defaultExternalToolsSettings;
@@ -288,7 +288,7 @@ public class GUI extends Observable {
 
   private JMenu menuPlugins, menuMoteTypeClasses, menuMoteTypes;
 
-  private JMenu menuOpenSimulation, menuConfOpenSimulation;
+  private JMenu menuOpenSimulation;
   private boolean hasFileHistoryChanged;
 
   private Vector<Class<? extends Plugin>> menuMotePluginClasses;
@@ -303,7 +303,7 @@ public class GUI extends Observable {
   // Maintained via method reparseProjectConfig()
   private ProjectConfig projectConfig;
 
-  private Vector<File> currentProjectDirs = new Vector<File>();
+  private ArrayList<COOJAProject> currentProjects = new ArrayList<COOJAProject>();
 
   public ClassLoader projectDirClassLoader;
 
@@ -311,11 +311,7 @@ public class GUI extends Observable {
 
   private Vector<Class<? extends Plugin>> pluginClasses = new Vector<Class<? extends Plugin>>();
 
-  private Vector<Class<? extends Plugin>> pluginClassesTemporary = new Vector<Class<? extends Plugin>>();
-
   private Vector<Class<? extends RadioMedium>> radioMediumClasses = new Vector<Class<? extends RadioMedium>>();
-
-  private Vector<Class<? extends IPDistributor>> ipDistributorClasses = new Vector<Class<? extends IPDistributor>>();
 
   private Vector<Class<? extends Positioner>> positionerClasses = new Vector<Class<? extends Positioner>>();
 
@@ -345,9 +341,11 @@ public class GUI extends Observable {
   public static class MoteRelation {
     public Mote source;
     public Mote dest;
-    public MoteRelation(Mote source, Mote dest) {
+    public Color color;
+    public MoteRelation(Mote source, Mote dest, Color color) {
       this.source = source;
       this.dest = dest;
+      this.color = color;
     }
   }
   private ArrayList<MoteRelation> moteRelations = new ArrayList<MoteRelation>();
@@ -407,7 +405,7 @@ public class GUI extends Observable {
       String[] arr = defaultProjectDirs.split(";");
       for (String p : arr) {
         File projectDir = restorePortablePath(new File(p));
-        currentProjectDirs.add(projectDir);
+        currentProjects.add(new COOJAProject(projectDir));
       }
     }
 
@@ -417,11 +415,12 @@ public class GUI extends Observable {
     } catch (ParseProjectsException e) {
       logger.fatal("Error when loading projects: " + e.getMessage(), e);
       if (isVisualized()) {
-        JOptionPane.showMessageDialog(GUI.getTopParentContainer(),
-            "Default projects could not load, reconfigure project directories:" +
-            "\n\tMenu->Settings->COOJA projects" +
-            "\n\nSee console for stack trace with more information.",
-            "Project loading error", JOptionPane.ERROR_MESSAGE);
+      	JOptionPane.showMessageDialog(GUI.getTopParentContainer(),
+      			"All COOJA projects could not load.\n\n" +
+      			"To manage COOJA projects:\n" +
+      			"Menu->Settings->COOJA projects",
+      			"Reconfigure COOJA projects", JOptionPane.INFORMATION_MESSAGE);
+      	showErrorDialog(getTopParentContainer(), "COOJA projects load error", e, false);
       }
     }
 
@@ -567,27 +566,17 @@ public class GUI extends Observable {
       return;
     }
     if (!hasFileHistoryChanged) {
-      // No need to update menu because file history has not changed
       return;
     }
     hasFileHistoryChanged = false;
 
     File[] openFilesHistory = getFileHistory();
-    updateOpenHistoryMenuItems("confopen", menuConfOpenSimulation, openFilesHistory);
-    updateOpenHistoryMenuItems("open", menuOpenSimulation, openFilesHistory);
+    updateOpenHistoryMenuItems(openFilesHistory);
   }
 
-  private void updateOpenHistoryMenuItems(String type, JMenu menu, File[] openFilesHistory) {
-    menu.removeAll();
-    JMenuItem browseItem = new JMenuItem("Browse...");
-    browseItem.setActionCommand(type + " sim");
-    browseItem.addActionListener(guiEventHandler);
-    menu.add(browseItem);
-    menu.add(new JSeparator());
-
-    String command = type + " last sim";
-    int index = 0;
+  private void populateMenuWithHistory(JMenu menu, final boolean quick, File[] openFilesHistory) {
     JMenuItem lastItem;
+    int index = 0;
     for (File file: openFilesHistory) {
       if (index < 10) {
         char mnemonic = (char) ('0' + (++index % 10));
@@ -596,12 +585,52 @@ public class GUI extends Observable {
       } else {
         lastItem = new JMenuItem(file.getName());
       }
-      lastItem.setActionCommand(command);
+      final File f = file;
+      lastItem.addActionListener(new ActionListener() {
+  			public void actionPerformed(ActionEvent e) {
+  				doLoadConfigAsync(true, quick, f);
+  			}
+      });
       lastItem.putClientProperty("file", file);
       lastItem.setToolTipText(file.getAbsolutePath());
-      lastItem.addActionListener(guiEventHandler);
       menu.add(lastItem);
     }
+  }
+  
+  private void doLoadConfigAsync(final boolean ask, final boolean quick, final File file) {
+    new Thread(new Runnable() {
+      public void run() {
+        myGUI.doLoadConfig(ask, quick, file);
+      }
+    }).start();
+  }
+  private void updateOpenHistoryMenuItems(File[] openFilesHistory) {
+  	menuOpenSimulation.removeAll();
+
+    /* Reconfigure submenu */
+    JMenu reconfigureMenu = new JMenu("Open and Reconfigure");
+    JMenuItem browseItem2 = new JMenuItem("Browse...");
+    browseItem2.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				doLoadConfigAsync(true, false, null);
+			}
+    });
+    reconfigureMenu.add(browseItem2);
+    reconfigureMenu.add(new JSeparator());
+    populateMenuWithHistory(reconfigureMenu, false, openFilesHistory);
+
+    /* Open menu */
+    JMenuItem browseItem = new JMenuItem("Browse...");
+    browseItem.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				doLoadConfigAsync(true, true, null);
+			}
+    });
+    menuOpenSimulation.add(browseItem);
+    menuOpenSimulation.add(new JSeparator());
+    menuOpenSimulation.add(reconfigureMenu);
+    menuOpenSimulation.add(new JSeparator());
+    populateMenuWithHistory(menuOpenSimulation, true, openFilesHistory);
   }
 
   /**
@@ -677,13 +706,6 @@ public class GUI extends Observable {
       menuOpenSimulation.setToolTipText("Not available in applet version");
     }
 
-    menuConfOpenSimulation = new JMenu("Open & Reconfigure simulation");
-    menuConfOpenSimulation.setMnemonic(KeyEvent.VK_R);
-    menu.add(menuConfOpenSimulation);
-    if (isVisualizedInApplet()) {
-      menuConfOpenSimulation.setEnabled(false);
-      menuConfOpenSimulation.setToolTipText("Not available in applet version");
-    }
     hasFileHistoryChanged = true;
 
     menu.add(new JMenuItem(saveSimulationAction));
@@ -1100,7 +1122,8 @@ public class GUI extends Observable {
 
   private static JDesktopPane createDesktopPane() {
     final JDesktopPane desktop = new JDesktopPane() {
-      public void setBounds(int x, int y, int w, int h) {
+			private static final long serialVersionUID = -8272040875621119329L;
+			public void setBounds(int x, int y, int w, int h) {
         super.setBounds(x, y, w, h);
         updateDesktopSize(this);
       }
@@ -1115,7 +1138,8 @@ public class GUI extends Observable {
       }
     };
     desktop.setDesktopManager(new DefaultDesktopManager() {
-      public void endResizingFrame(JComponent f) {
+			private static final long serialVersionUID = -5987404936292377152L;
+			public void endResizingFrame(JComponent f) {
         super.endResizingFrame(f);
         updateDesktopSize(desktop);
       }
@@ -1229,42 +1253,6 @@ public class GUI extends Observable {
   }
 
   /**
-   * Register new IP distributor class
-   *
-   * @param ipDistributorClass
-   *          Class to register
-   * @return True if class was registered
-   */
-  public boolean registerIPDistributor(
-      Class<? extends IPDistributor> ipDistributorClass) {
-    // Check that vector constructor exists
-    try {
-      ipDistributorClass.getConstructor(new Class[] { Vector.class });
-    } catch (Exception e) {
-      logger.fatal("No vector constructor found of IP distributor: "
-          + ipDistributorClass);
-      return false;
-    }
-
-    ipDistributorClasses.add(ipDistributorClass);
-    return true;
-  }
-
-  /**
-   * Unregister all IP distributors.
-   */
-  public void unregisterIPDistributors() {
-    ipDistributorClasses.clear();
-  }
-
-  /**
-   * @return All registered IP distributors
-   */
-  public Vector<Class<? extends IPDistributor>> getRegisteredIPDistributors() {
-    return ipDistributorClasses;
-  }
-
-  /**
    * Register new positioner class.
    *
    * @param positionerClass
@@ -1339,12 +1327,10 @@ public class GUI extends Observable {
 
   /**
    * Builds new project configuration using current project directories settings.
-   * Reregisters mote types, plugins, IP distributors, positioners and radio
+   * Reregisters mote types, plugins, positioners and radio
    * mediums. This method may still return true even if all classes could not be
    * registered, but always returns false if all project directory configuration
    * files were not parsed correctly.
-   *
-   * Any registered temporary plugins will be saved and reregistered.
    */
   public void reparseProjectConfig() throws ParseProjectsException {
     if (PROJECT_DEFAULT_CONFIG_FILENAME == null) {
@@ -1355,40 +1341,29 @@ public class GUI extends Observable {
       }
     }
 
-    // Backup temporary plugins
-    Vector<Class<? extends Plugin>> oldTempPlugins = 
-      (Vector<Class<? extends Plugin>>) pluginClassesTemporary.clone();
-
-    // Reset current configuration
+    /* Remove current dependencies */
     unregisterMoteTypes();
     unregisterPlugins();
-    unregisterIPDistributors();
     unregisterPositioners();
     unregisterRadioMediums();
-
+    projectDirClassLoader = null;
+    
+    /* Build cooja configuration */
     try {
-      // Read default configuration
       projectConfig = new ProjectConfig(true);
     } catch (FileNotFoundException e) {
-      logger.fatal("Could not find default project config file: "
-          + PROJECT_DEFAULT_CONFIG_FILENAME);
+      logger.fatal("Could not find default project config file: " + PROJECT_DEFAULT_CONFIG_FILENAME);
       throw (ParseProjectsException) new ParseProjectsException(
-          "Could not find default project config file: "
-          + PROJECT_DEFAULT_CONFIG_FILENAME).initCause(e);
+          "Could not find default project config file: " + PROJECT_DEFAULT_CONFIG_FILENAME).initCause(e);
     } catch (IOException e) {
-      logger.fatal("Error when reading default project config file: "
-          + PROJECT_DEFAULT_CONFIG_FILENAME);
+      logger.fatal("Error when reading default project config file: " + PROJECT_DEFAULT_CONFIG_FILENAME);
       throw (ParseProjectsException) new ParseProjectsException(
-          "Error when reading default project config file: "
-          + PROJECT_DEFAULT_CONFIG_FILENAME).initCause(e);
+          "Error when reading default project config file: " + PROJECT_DEFAULT_CONFIG_FILENAME).initCause(e);
     }
-
     if (!isVisualizedInApplet()) {
-      // Append project directory configurations
-      for (File projectDir : currentProjectDirs) {
+      for (COOJAProject project: currentProjects) {
         try {
-          // Append config to general config
-          projectConfig.appendProjectDir(projectDir);
+          projectConfig.appendProjectDir(project.dir);
         } catch (FileNotFoundException e) {
           throw (ParseProjectsException) new ParseProjectsException(
               "Error when loading project: " + e.getMessage()).initCause(e);
@@ -1397,16 +1372,14 @@ public class GUI extends Observable {
               "Error when reading project config: " + e.getMessage()).initCause(e);
         }
       }
-
-      // Create class loader
+      
+      /* Create project class loader */
       try {
-        projectDirClassLoader = createClassLoader(currentProjectDirs);
+        projectDirClassLoader = createClassLoader(currentProjects);
       } catch (ClassLoaderCreationException e) {
         throw (ParseProjectsException) new ParseProjectsException(
         "Error when creating class loader").initCause(e);
       }
-    } else {
-      projectDirClassLoader = null;
     }
 
     // Register mote types
@@ -1442,37 +1415,6 @@ public class GUI extends Observable {
           // logger.info("Loaded plugin class: " + pluginClassName);
         } else {
           logger.warn("Could not load plugin class: " + pluginClassName);
-        }
-      }
-    }
-
-    // Reregister temporary plugins again
-    if (oldTempPlugins != null) {
-      for (Class<? extends Plugin> pluginClass : oldTempPlugins) {
-        if (registerTemporaryPlugin(pluginClass)) {
-          // logger.info("Reregistered temporary plugin class: " +
-          // getDescriptionOf(pluginClass));
-        } else {
-          logger.warn("Could not reregister temporary plugin class: "
-              + getDescriptionOf(pluginClass));
-        }
-      }
-    }
-
-    // Register IP distributors
-    String[] ipDistClassNames = projectConfig.getStringArrayValue(GUI.class,
-    "IP_DISTRIBUTORS");
-    if (ipDistClassNames != null) {
-      for (String ipDistClassName : ipDistClassNames) {
-        Class<? extends IPDistributor> ipDistClass = tryLoadClass(this,
-            IPDistributor.class, ipDistClassName);
-
-        if (ipDistClass != null) {
-          registerIPDistributor(ipDistClass);
-          // logger.info("Loaded IP distributor class: " + ipDistClassName);
-        } else {
-          logger
-          .warn("Could not load IP distributor class: " + ipDistClassName);
         }
       }
     }
@@ -1529,8 +1471,8 @@ public class GUI extends Observable {
    *
    * @return Current project directories.
    */
-  public Vector<File> getProjectDirs() {
-    return currentProjectDirs;
+  public COOJAProject[] getProjects() {
+    return currentProjects.toArray(new COOJAProject[0]);
   }
 
   // // PLUGIN METHODS ////
@@ -1783,56 +1725,25 @@ public class GUI extends Observable {
   }
 
   /**
-   * Register a temporary plugin to be included in the GUI. The plugin will be
-   * visible in the menubar. This plugin will automatically be unregistered if
-   * the current simulation is removed.
-   *
-   * @param newPluginClass
-   *          New plugin to register
-   * @return True if this plugin was registered ok, false otherwise
-   */
-  public boolean registerTemporaryPlugin(Class<? extends Plugin> newPluginClass) {
-    if (pluginClasses.contains(newPluginClass)) {
-      return false;
-    }
-
-    boolean returnVal = registerPlugin(newPluginClass, true);
-    if (!returnVal) {
-      return false;
-    }
-
-    pluginClassesTemporary.add(newPluginClass);
-    return true;
-  }
-
-  /**
    * Unregister a plugin class. Removes any plugin menu items links as well.
    *
-   * @param pluginClass
-   *          Plugin class to unregister
+   * @param pluginClass Plugin class
    */
   public void unregisterPlugin(Class<? extends Plugin> pluginClass) {
-
-    // Remove (if existing) plugin class menu items
+    /* Remove from menu */
     for (Component menuComponent : menuPlugins.getMenuComponents()) {
-      if (menuComponent.getClass().isAssignableFrom(JMenuItem.class)) {
-        JMenuItem menuItem = (JMenuItem) menuComponent;
-        if (menuItem.getClientProperty("class").equals(pluginClass)) {
-          menuPlugins.remove(menuItem);
-        }
+    	if (!(menuComponent instanceof JMenuItem)) {
+    		continue;
+    	}
+
+      JMenuItem menuItem = (JMenuItem) menuComponent;
+      if (menuItem.getClientProperty("class").equals(pluginClass)) {
+      	menuPlugins.remove(menuItem);
       }
     }
-    if (menuMotePluginClasses.contains(pluginClass)) {
-      menuMotePluginClasses.remove(pluginClass);
-    }
 
-    // Remove from plugin vectors (including temporary)
-    if (pluginClasses.contains(pluginClass)) {
-      pluginClasses.remove(pluginClass);
-    }
-    if (pluginClassesTemporary.contains(pluginClass)) {
-      pluginClassesTemporary.remove(pluginClass);
-    }
+    menuMotePluginClasses.remove(pluginClass);
+    pluginClasses.remove(pluginClass);
   }
 
   /**
@@ -1954,7 +1865,7 @@ public class GUI extends Observable {
   }
 
   /**
-   * Unregister all plugin classes, including temporary plugins.
+   * Unregister all plugin classes
    */
   public void unregisterPlugins() {
     if (menuPlugins != null) {
@@ -1968,22 +1879,32 @@ public class GUI extends Observable {
       menuMotePluginClasses.clear();
     }
     pluginClasses.clear();
-    pluginClassesTemporary.clear();
   }
 
+  /**
+   * Returns started plugin that ends with given class name, if any.
+   * 
+   * @param classname Class name
+   * @return Plugin instance
+   */
+  public Plugin getPlugin(String classname) {
+    for (Plugin p: startedPlugins) {
+      if (p.getClass().getName().endsWith(classname)) {
+        return p;
+      }
+    }
+    return null;
+  }
+  
   /**
    * Returns started plugin with given class name, if any.
    * 
    * @param classname Class name
    * @return Plugin instance
+   * @deprecated
    */
   public Plugin getStartedPlugin(String classname) {
-    for (Plugin p: startedPlugins) {
-      if (p.getClass().getName().equals(classname)) {
-        return p;
-      }
-    }
-    return null;
+    return getPlugin(classname);
   }
 
   public Plugin[] getStartedPlugins() {
@@ -2027,7 +1948,7 @@ public class GUI extends Observable {
 
     // Set frame title
     if (frame != null) {
-      frame.setTitle("COOJA Simulator" + " - " + sim.getTitle());
+      frame.setTitle(sim.getTitle() + " - COOJA Simulator");
     }
 
     // Open standard plugins (if none opened already)
@@ -2149,14 +2070,6 @@ public class GUI extends Observable {
 
     mySimulation = null;
     updateGUIComponentState();
-
-    // Unregister temporary plugin classes
-    Class<? extends Plugin>[] pluginClasses =
-      new Class[pluginClassesTemporary.size()];
-    pluginClassesTemporary.toArray(pluginClasses);
-    for (Class<? extends Plugin> pClass: pluginClasses) {
-      unregisterPlugin(pClass);
-    }
 
     // Reset frame title
     if (isVisualizedInFrame()) {
@@ -2502,7 +2415,6 @@ public class GUI extends Observable {
     mySimulation.stopSimulation();
 
     JFileChooser fc = new JFileChooser();
-
     fc.setFileFilter(GUI.SAVED_SIMULATIONS_FILES);
 
     // Suggest file using history
@@ -2515,10 +2427,8 @@ public class GUI extends Observable {
     if (returnVal == JFileChooser.APPROVE_OPTION) {
       File saveFile = fc.getSelectedFile();
       if (!fc.accept(saveFile)) {
-        saveFile = new File(saveFile.getParent(), saveFile.getName()
-            + SAVED_SIMULATIONS_FILES);
+        saveFile = new File(saveFile.getParent(), saveFile.getName() + SAVED_SIMULATIONS_FILES);
       }
-
       if (saveFile.exists()) {
         if (askForConfirmation) {
           String s1 = "Overwrite";
@@ -2534,13 +2444,15 @@ public class GUI extends Observable {
           }
         }
       }
-
       if (!saveFile.exists() || saveFile.canWrite()) {
         saveSimulationConfig(saveFile);
         addToFileHistory(saveFile);
         return saveFile;
       } else {
-        logger.fatal("No write access to file");
+      	JOptionPane.showMessageDialog(
+      			getTopParentContainer(), "No write access to " + saveFile, "Save failed", 
+      			JOptionPane.ERROR_MESSAGE);
+        logger.fatal("No write access to file: " + saveFile.getAbsolutePath());
       }
     } else {
       logger.info("Save command cancelled by user...");
@@ -2826,33 +2738,7 @@ public class GUI extends Observable {
 
   private class GUIEventHandler implements ActionListener {
     public void actionPerformed(ActionEvent e) {
-      if (e.getActionCommand().equals("confopen sim")) {
-        new Thread(new Runnable() {
-          public void run() {
-            myGUI.doLoadConfig(true, false, null);
-          }
-        }).start();
-      } else if (e.getActionCommand().equals("confopen last sim")) {
-        final File file = (File) ((JMenuItem) e.getSource()).getClientProperty("file");
-        new Thread(new Runnable() {
-          public void run() {
-            myGUI.doLoadConfig(true, false, file);
-          }
-        }).start();
-      } else if (e.getActionCommand().equals("open sim")) {
-        new Thread(new Runnable() {
-          public void run() {
-            myGUI.doLoadConfig(true, true, null);
-          }
-        }).start();
-      } else if (e.getActionCommand().equals("open last sim")) {
-        final File file = (File) ((JMenuItem) e.getSource()).getClientProperty("file");
-        new Thread(new Runnable() {
-          public void run() {
-            myGUI.doLoadConfig(true, true, file);
-          }
-        }).start();
-      } else if (e.getActionCommand().equals("create mote type")) {
+      if (e.getActionCommand().equals("create mote type")) {
         myGUI.doCreateMoteType((Class<? extends MoteType>) ((JMenuItem) e
             .getSource()).getClientProperty("class"));
       } else if (e.getActionCommand().equals("add motes")) {
@@ -2861,27 +2747,28 @@ public class GUI extends Observable {
       } else if (e.getActionCommand().equals("edit paths")) {
         ExternalToolsDialog.showDialog(GUI.getTopParentContainer());
       } else if (e.getActionCommand().equals("manage projects")) {
-        File[] newProjects = ProjectDirectoriesDialog.showDialog(
+        COOJAProject[] newProjects = ProjectDirectoriesDialog.showDialog(
             GUI.getTopParentContainer(), 
             GUI.this, 
-            currentProjectDirs.toArray(new File[0])
+            getProjects()
         );
         if (newProjects != null) {
-          currentProjectDirs.clear();
-          for (File p: newProjects) {
-            currentProjectDirs.add(p);
-          }
+        	currentProjects.clear();
+        	for (COOJAProject p: newProjects) {
+            currentProjects.add(p);
+        	}
           try {
             reparseProjectConfig();
           } catch (ParseProjectsException ex) {
             logger.fatal("Error when loading projects: " + ex.getMessage(), ex);
             if (isVisualized()) {
-              JOptionPane.showMessageDialog(GUI.getTopParentContainer(),
-                  "Configured projects could not load, reconfigure project directories:" +
-                  "\n\tMenu->Settings->COOJA projects" +
-                  "\n\nSee console for stack trace with more information.",
-                  "Project loading error", JOptionPane.ERROR_MESSAGE);
+            	JOptionPane.showMessageDialog(GUI.getTopParentContainer(),
+            			"All COOJA projects could not load.\n\n" +
+            			"To manage COOJA projects:\n" +
+            			"Menu->Settings->COOJA projects",
+            			"Reconfigure COOJA projects", JOptionPane.INFORMATION_MESSAGE);
             }
+            showErrorDialog(getTopParentContainer(), "COOJA projects load error", ex, false);
           }
         }
       } else if (e.getActionCommand().equals("configuration wizard")) {
@@ -2934,22 +2821,12 @@ public class GUI extends Observable {
     return null;
   }
 
-  public ClassLoader createProjectDirClassLoader(Vector<File> projectsDirs)
-  throws ParseProjectsException, ClassLoaderCreationException {
-    if (projectDirClassLoader == null) {
-      reparseProjectConfig();
-    }
-    return createClassLoader(projectDirClassLoader, projectsDirs);
+  private ClassLoader createClassLoader(Collection<COOJAProject> projects)
+  throws ClassLoaderCreationException {
+    return createClassLoader(ClassLoader.getSystemClassLoader(), projects);
   }
 
-  private ClassLoader createClassLoader(Vector<File> currentProjectDirs)
-  throws ClassLoaderCreationException
-  {
-    return createClassLoader(ClassLoader.getSystemClassLoader(),
-        currentProjectDirs);
-  }
-
-  private File findJarFile(File projectDir, String jarfile) {
+  public static File findJarFile(File projectDir, String jarfile) {
     File fp = new File(jarfile);
     if (!fp.exists()) {
       fp = new File(projectDir, jarfile);
@@ -2966,17 +2843,16 @@ public class GUI extends Observable {
     return fp.exists() ? fp : null;
   }
 
-  private ClassLoader createClassLoader(ClassLoader parent,
-      Vector<File> projectDirs) throws ClassLoaderCreationException {
-    if (projectDirs == null || projectDirs.isEmpty()) {
+  private ClassLoader createClassLoader(ClassLoader parent, Collection<COOJAProject> projects)
+  throws ClassLoaderCreationException {
+    if (projects == null || projects.isEmpty()) {
       return parent;
     }
 
-    // Combine class loader from all project directories (including any
-    // specified JAR files)
+    /* Create class loader from JARs */
     ArrayList<URL> urls = new ArrayList<URL>();
-    for (int j = projectDirs.size() - 1; j >= 0; j--) {
-      File projectDir = projectDirs.get(j);
+    for (COOJAProject project: projects) {
+    	File projectDir = project.dir;
       try {
         urls.add((new File(projectDir, "java")).toURI().toURL());
 
@@ -3244,31 +3120,19 @@ public class GUI extends Observable {
 
     try {
       SAXBuilder builder = new SAXBuilder();
-      Document doc = builder.build(file);
+    	InputStream in = new FileInputStream(file);
+      if (file.getName().endsWith(".gz")) {
+      	in = new GZIPInputStream(in);
+      }
+      Document doc = builder.build(in);
       Element root = doc.getRootElement();
+      in.close();
 
       return loadSimulationConfig(root, quick, null);
     } catch (JDOMException e) {
       throw (SimulationCreationException) new SimulationCreationException("Config not wellformed").initCause(e);
     } catch (IOException e) {
       throw (SimulationCreationException) new SimulationCreationException("Load simulation error").initCause(e);
-    }
-  }
-
-  public Simulation loadSimulationConfig(StringReader stringReader, boolean quick)
-  throws SimulationCreationException {
-    try {
-      SAXBuilder builder = new SAXBuilder();
-      Document doc = builder.build(stringReader);
-      Element root = doc.getRootElement();
-
-      return loadSimulationConfig(root, quick, null);
-    } catch (JDOMException e) {
-      throw (SimulationCreationException) new SimulationCreationException(
-          "Configuration file not wellformed: " + e.getMessage()).initCause(e);
-    } catch (IOException e) {
-      throw (SimulationCreationException) new SimulationCreationException(
-          "IO Exception: " + e.getMessage()).initCause(e);
     }
   }
 
@@ -3376,7 +3240,12 @@ public class GUI extends Observable {
     try {
       // Create and write to document
       Document doc = new Document(extractSimulationConfig());
-      FileOutputStream out = new FileOutputStream(file);
+      OutputStream out = new FileOutputStream(file);
+      
+      if (file.getName().endsWith(".gz")) {
+      	out = new GZIPOutputStream(out);
+      }
+      
       XMLOutputter outputter = new XMLOutputter();
       outputter.setFormat(Format.getPrettyFormat());
       outputter.output(doc, out);
@@ -3394,9 +3263,9 @@ public class GUI extends Observable {
     Element root = new Element("simconf");
 
     /* Store project directories meta data */
-    for (File project: currentProjectDirs) {
+    for (COOJAProject project: currentProjects) {
       Element projectElement = new Element("project");
-      projectElement.addContent(createPortablePath(project).getPath().replaceAll("\\\\", "/"));
+      projectElement.addContent(createPortablePath(project.dir).getPath().replaceAll("\\\\", "/"));
       projectElement.setAttribute("EXPORT", "discard");
       root.addContent(projectElement);
     }
@@ -3507,9 +3376,9 @@ public class GUI extends Observable {
         }
         
         boolean found = false;
-        for (File currentProject: currentProjectDirs) {
+        for (COOJAProject currentProject: currentProjects) {
           if (projectFile.getPath().replaceAll("\\\\", "/").
-              equals(currentProject.getPath().replaceAll("\\\\", "/"))) {
+              equals(currentProject.dir.getPath().replaceAll("\\\\", "/"))) {
             found = true;
             break;
           }
@@ -3665,25 +3534,29 @@ public class GUI extends Observable {
   }
 
   public class ParseProjectsException extends Exception {
-    public ParseProjectsException(String message) {
+		private static final long serialVersionUID = 1508168026300714850L;
+		public ParseProjectsException(String message) {
       super(message);
     }
   }
 
   public class ClassLoaderCreationException extends Exception {
-    public ClassLoaderCreationException(String message) {
+		private static final long serialVersionUID = 1578001681266277774L;
+		public ClassLoaderCreationException(String message) {
       super(message);
     }
   }
 
   public class SimulationCreationException extends Exception {
-    public SimulationCreationException(String message) {
+		private static final long serialVersionUID = -2414899187405770448L;
+		public SimulationCreationException(String message) {
       super(message);
     }
   }
 
   public class PluginConstructionException extends Exception {
-    public PluginConstructionException(String message) {
+		private static final long serialVersionUID = 8004171223353676751L;
+		public PluginConstructionException(String message) {
       super(message);
     }
   }
@@ -3761,7 +3634,8 @@ public class GUI extends Observable {
 
         if (retryAvailable) {
           Action retryAction = new AbstractAction() {
-            public void actionPerformed(ActionEvent e) {
+						private static final long serialVersionUID = 2370456199250998435L;
+						public void actionPerformed(ActionEvent e) {
               errorDialog.setTitle("-RETRY-");
               errorDialog.dispose();
             }
@@ -3777,7 +3651,8 @@ public class GUI extends Observable {
         }
 
         AbstractAction closeAction = new AbstractAction(){
-          public void actionPerformed(ActionEvent e) {
+					private static final long serialVersionUID = 6225539435993362733L;
+					public void actionPerformed(ActionEvent e) {
             errorDialog.dispose();
           }
         };
@@ -3836,7 +3711,8 @@ public class GUI extends Observable {
 
         /* Close on escape */
         AbstractAction closeAction = new AbstractAction(){
-          public void actionPerformed(ActionEvent e) {
+					private static final long serialVersionUID = 2646163984382201634L;
+					public void actionPerformed(ActionEvent e) {
             dialog.dispose();
           }
         };
@@ -3920,11 +3796,22 @@ public class GUI extends Observable {
    * @param dest Destination mote
    */
   public void addMoteRelation(Mote source, Mote dest) {
+    addMoteRelation(source, dest, null);
+  }
+
+  /**
+   * Adds directed relation between given motes.
+   *
+   * @param source Source mote
+   * @param dest Destination mote
+   * @param color The color to use when visualizing the mote relation
+   */
+  public void addMoteRelation(Mote source, Mote dest, Color color) {
     if (source == null || dest == null) {
       return;
     }
     removeMoteRelation(source, dest); /* Unique relations */
-    moteRelations.add(new MoteRelation(source, dest));
+    moteRelations.add(new MoteRelation(source, dest, color));
     moteRelationObservable.setChangedAndNotify();
   }
 
@@ -3942,9 +3829,11 @@ public class GUI extends Observable {
     for (MoteRelation r: arr) {
       if (r.source == source && r.dest == dest) {
         moteRelations.remove(r);
+        /* Relations are unique */
+        moteRelationObservable.setChangedAndNotify();
+        break;
       }
     }
-    moteRelationObservable.setChangedAndNotify();
   }
 
   /**
@@ -3953,9 +3842,7 @@ public class GUI extends Observable {
    * @see #addMoteRelationsObserver(Observer)
    */
   public MoteRelation[] getMoteRelations() {
-    MoteRelation[] arr = new MoteRelation[moteRelations.size()];
-    moteRelations.toArray(arr);
-    return arr;
+    return moteRelations.toArray(new MoteRelation[moteRelations.size()]);
   }
 
   /**
@@ -4235,7 +4122,8 @@ public class GUI extends Observable {
 
   /* GUI actions */
   abstract class GUIAction extends AbstractAction {
-    public GUIAction(String name) {
+		private static final long serialVersionUID = 6946179457635198477L;
+		public GUIAction(String name) {
       super(name);
     }
     public GUIAction(String name, int nmenomic) {
@@ -4253,7 +4141,8 @@ public class GUI extends Observable {
     public abstract boolean shouldBeEnabled();
   }
   GUIAction newSimulationAction = new GUIAction("New simulation", KeyEvent.VK_N, KeyStroke.getKeyStroke(KeyEvent.VK_N, ActionEvent.CTRL_MASK)) {
-    public void actionPerformed(ActionEvent e) {
+		private static final long serialVersionUID = 5053703908505299911L;
+		public void actionPerformed(ActionEvent e) {
       myGUI.doCreateSimulation(true);
     }
     public boolean shouldBeEnabled() {
@@ -4261,7 +4150,8 @@ public class GUI extends Observable {
     }
   };
   GUIAction closeSimulationAction = new GUIAction("Close simulation", KeyEvent.VK_C) {
-    public void actionPerformed(ActionEvent e) {
+		private static final long serialVersionUID = -4783032948880161189L;
+		public void actionPerformed(ActionEvent e) {
       myGUI.doRemoveSimulation(true);
     }
     public boolean shouldBeEnabled() {
@@ -4269,7 +4159,8 @@ public class GUI extends Observable {
     }
   };
   GUIAction reloadSimulationAction = new GUIAction("keep random seed", KeyEvent.VK_K, KeyStroke.getKeyStroke(KeyEvent.VK_R, ActionEvent.CTRL_MASK)) {
-    public void actionPerformed(ActionEvent e) {
+		private static final long serialVersionUID = 66579555555421977L;
+		public void actionPerformed(ActionEvent e) {
       if (getSimulation() == null) {
         /* Reload last opened simulation */
         final File file = getLastOpenedFile();
@@ -4290,7 +4181,8 @@ public class GUI extends Observable {
     }
   };
   GUIAction reloadRandomSimulationAction = new GUIAction("new random seed", KeyEvent.VK_N, KeyStroke.getKeyStroke(KeyEvent.VK_R, ActionEvent.CTRL_MASK | ActionEvent.SHIFT_MASK)) {
-    public void actionPerformed(ActionEvent e) {
+		private static final long serialVersionUID = -4494402222740250203L;
+		public void actionPerformed(ActionEvent e) {
       /* Replace seed before reloading */
       if (getSimulation() != null) {
         getSimulation().setRandomSeed(getSimulation().getRandomSeed()+1);
@@ -4302,7 +4194,8 @@ public class GUI extends Observable {
     }
   };
   GUIAction saveSimulationAction = new GUIAction("Save simulation", KeyEvent.VK_S) {
-    public void actionPerformed(ActionEvent e) {
+		private static final long serialVersionUID = 1132582220401954286L;
+		public void actionPerformed(ActionEvent e) {
       myGUI.doSaveConfig(true);
     }
     public boolean shouldBeEnabled() {
@@ -4313,7 +4206,8 @@ public class GUI extends Observable {
     }
   };
   GUIAction closePluginsAction = new GUIAction("Close all plugins") {
-    public void actionPerformed(ActionEvent e) {
+		private static final long serialVersionUID = -37575622808266989L;
+		public void actionPerformed(ActionEvent e) {
       Object[] plugins = startedPlugins.toArray();
       for (Object plugin : plugins) {
         removePlugin((Plugin) plugin, false);
@@ -4324,7 +4218,8 @@ public class GUI extends Observable {
     }
   };
   GUIAction exportExecutableJARAction = new GUIAction("Export simulation as executable JAR") {
-    public void actionPerformed(ActionEvent e) {
+		private static final long serialVersionUID = -203601967460630049L;
+		public void actionPerformed(ActionEvent e) {
       getSimulation().stopSimulation();
 
       /* Info message */
@@ -4399,8 +4294,9 @@ public class GUI extends Observable {
       return getSimulation() != null;
     }
   };
-  GUIAction exitCoojaAction = new GUIAction("Exit", KeyEvent.VK_X, KeyStroke.getKeyStroke(KeyEvent.VK_X, ActionEvent.CTRL_MASK)) {
-    public void actionPerformed(ActionEvent e) {
+  GUIAction exitCoojaAction = new GUIAction("Exit") {
+		private static final long serialVersionUID = 7523822251658687665L;
+		public void actionPerformed(ActionEvent e) {
       myGUI.doQuit(true);
     }
     public boolean shouldBeEnabled() {
@@ -4411,7 +4307,8 @@ public class GUI extends Observable {
     }
   };
   GUIAction startStopSimulationAction = new GUIAction("Start/Stop simulation", KeyStroke.getKeyStroke(KeyEvent.VK_S, ActionEvent.CTRL_MASK)) {
-    public void actionPerformed(ActionEvent e) {
+		private static final long serialVersionUID = 6750107157493939710L;
+		public void actionPerformed(ActionEvent e) {
       /* Start/Stop current simulation */
       Simulation s = getSimulation();
       if (s == null) {
@@ -4438,7 +4335,8 @@ public class GUI extends Observable {
     }
   };
   class StartPluginGUIAction extends GUIAction {
-    public StartPluginGUIAction(String name) {
+		private static final long serialVersionUID = 7368495576372376196L;
+		public StartPluginGUIAction(String name) {
       super(name);
     }
     public void actionPerformed(final ActionEvent e) {
@@ -4456,7 +4354,8 @@ public class GUI extends Observable {
     }
   }
   GUIAction removeAllMotesAction = new GUIAction("Remove all motes") {
-    public void actionPerformed(ActionEvent e) {
+		private static final long serialVersionUID = 4709776747913364419L;
+		public void actionPerformed(ActionEvent e) {
       Simulation s = getSimulation();
       if (s.isRunning()) {
         s.stopSimulation();
@@ -4472,7 +4371,8 @@ public class GUI extends Observable {
     }
   };
   GUIAction showQuickHelpAction = new GUIAction("Quick help", KeyStroke.getKeyStroke(KeyEvent.VK_F1, 0)) {
-    public void actionPerformed(ActionEvent e) {
+		private static final long serialVersionUID = 3151729036597971681L;
+		public void actionPerformed(ActionEvent e) {
       if (!(e.getSource() instanceof JCheckBoxMenuItem)) {
         return;
       }
@@ -4488,7 +4388,8 @@ public class GUI extends Observable {
     }
   };
   GUIAction showKeyboardShortcutsAction = new GUIAction("Keyboard shortcuts") {
-    public void actionPerformed(ActionEvent e) {
+		private static final long serialVersionUID = 2382848024856978524L;
+		public void actionPerformed(ActionEvent e) {
       loadQuickHelp("KEYBOARD_SHORTCUTS");
       JCheckBoxMenuItem checkBox = ((JCheckBoxMenuItem)showQuickHelpAction.getValue("checkbox"));
       if (checkBox == null) {
@@ -4505,7 +4406,8 @@ public class GUI extends Observable {
     }
   };
   GUIAction showBufferSettingsAction = new GUIAction("Buffer sizes") {
-    public void actionPerformed(ActionEvent e) {
+		private static final long serialVersionUID = 7018661735211901837L;
+		public void actionPerformed(ActionEvent e) {
       if (mySimulation == null) {
         return;
       }

@@ -58,7 +58,7 @@
  *
  * This file is part of the uIP TCP/IP stack.
  *
- * $Id: uipopt.h,v 1.12 2010/10/24 22:28:43 adamdunkels Exp $
+ * $Id: uipopt.h,v 1.14 2010/12/24 00:39:04 dak664 Exp $
  *
  */
 
@@ -116,7 +116,7 @@
  * \hideinitializer
  */
 #ifdef UIP_CONF_PINGADDRCONF
-#define UIP_PINGADDRCONF UIP_CONF_PINGADDRCONF
+#define UIP_PINGADDRCONF (UIP_CONF_PINGADDRCONF)
 #else /* UIP_CONF_PINGADDRCONF */
 #define UIP_PINGADDRCONF 0
 #endif /* UIP_CONF_PINGADDRCONF */
@@ -168,7 +168,7 @@
  * \hideinitializer
  */
 #ifdef UIP_CONF_REASSEMBLY
-#define UIP_REASSEMBLY UIP_CONF_REASSEMBLY
+#define UIP_REASSEMBLY (UIP_CONF_REASSEMBLY)
 #else /* UIP_CONF_REASSEMBLY */
 #define UIP_REASSEMBLY 0
 #endif /* UIP_CONF_REASSEMBLY */
@@ -256,9 +256,9 @@
  * \hideinitializer
  */
 #ifdef UIP_CONF_UDP_CHECKSUMS
-#define UIP_UDP_CHECKSUMS UIP_CONF_UDP_CHECKSUMS
+#define UIP_UDP_CHECKSUMS (UIP_CONF_UDP_CHECKSUMS)
 #else
-#define UIP_UDP_CHECKSUMS UIP_CONF_IPV6
+#define UIP_UDP_CHECKSUMS (UIP_CONF_IPV6)
 #endif
 
 /**
@@ -267,7 +267,7 @@
  * \hideinitializer
  */
 #ifdef UIP_CONF_UDP_CONNS
-#define UIP_UDP_CONNS UIP_CONF_UDP_CONNS
+#define UIP_UDP_CONNS (UIP_CONF_UDP_CONNS)
 #else /* UIP_CONF_UDP_CONNS */
 #define UIP_UDP_CONNS    10
 #endif /* UIP_CONF_UDP_CONNS */
@@ -292,7 +292,7 @@
  * \hideinitializer
  */
 #ifdef UIP_CONF_TCP
-#define UIP_TCP UIP_CONF_TCP
+#define UIP_TCP (UIP_CONF_TCP)
 #else /* UIP_CONF_UDP */
 #define UIP_TCP           1
 #endif /* UIP_CONF_UDP */
@@ -310,7 +310,7 @@
 #ifndef UIP_CONF_ACTIVE_OPEN
 #define UIP_ACTIVE_OPEN 1
 #else /* UIP_CONF_ACTIVE_OPEN */
-#define UIP_ACTIVE_OPEN UIP_CONF_ACTIVE_OPEN
+#define UIP_ACTIVE_OPEN (UIP_CONF_ACTIVE_OPEN)
 #endif /* UIP_CONF_ACTIVE_OPEN */
 
 /**
@@ -325,7 +325,7 @@
 #ifndef UIP_CONF_MAX_CONNECTIONS
 #define UIP_CONNS       10
 #else /* UIP_CONF_MAX_CONNECTIONS */
-#define UIP_CONNS UIP_CONF_MAX_CONNECTIONS
+#define UIP_CONNS (UIP_CONF_MAX_CONNECTIONS)
 #endif /* UIP_CONF_MAX_CONNECTIONS */
 
 
@@ -339,7 +339,7 @@
 #ifndef UIP_CONF_MAX_LISTENPORTS
 #define UIP_LISTENPORTS 20
 #else /* UIP_CONF_MAX_LISTENPORTS */
-#define UIP_LISTENPORTS UIP_CONF_MAX_LISTENPORTS
+#define UIP_LISTENPORTS (UIP_CONF_MAX_LISTENPORTS)
 #endif /* UIP_CONF_MAX_LISTENPORTS */
 
 /**
@@ -384,7 +384,7 @@
  * UIP_BUFSIZE - UIP_LLH_LEN - UIP_TCPIP_HLEN.
  */
 #ifdef UIP_CONF_TCP_MSS
-#define UIP_TCP_MSS UIP_CONF_TCP_MSS
+#define UIP_TCP_MSS (UIP_CONF_TCP_MSS)
 #else
 #define UIP_TCP_MSS     (UIP_BUFSIZE - UIP_LLH_LEN - UIP_TCPIP_HLEN)
 #endif
@@ -399,19 +399,21 @@
  * \hideinitializer
  */
 #ifndef UIP_CONF_RECEIVE_WINDOW
-#define UIP_RECEIVE_WINDOW UIP_TCP_MSS
+#define UIP_RECEIVE_WINDOW (UIP_TCP_MSS)
 #else
-#define UIP_RECEIVE_WINDOW UIP_CONF_RECEIVE_WINDOW
+#define UIP_RECEIVE_WINDOW (UIP_CONF_RECEIVE_WINDOW)
 #endif
 
 /**
  * How long a connection should stay in the TIME_WAIT state.
  *
- * This configuration option has no real implication, and it should be
- * left untouched.
+ * This can be reduced for faster entry into power saving modes.
  */
+#ifndef UIP_CONF_WAIT_TIMEOUT
 #define UIP_TIME_WAIT_TIMEOUT 120
-
+#else
+#define UIP_TIME_WAIT_TIMEOUT UIP_CONF_WAIT_TIMEOUT
+#endif
 
 /** @} */
 /*------------------------------------------------------------------------------*/
@@ -429,7 +431,7 @@
  * \hideinitializer
  */
 #ifdef UIP_CONF_ARPTAB_SIZE
-#define UIP_ARPTAB_SIZE UIP_CONF_ARPTAB_SIZE
+#define UIP_ARPTAB_SIZE (UIP_CONF_ARPTAB_SIZE)
 #else
 #define UIP_ARPTAB_SIZE 8
 #endif
@@ -467,7 +469,7 @@
  * (should be < 60s)
  */
 #ifdef SICSLOWPAN_CONF_MAXAGE
-#define SICSLOWPAN_REASS_MAXAGE SICSLOWPAN_CONF_MAXAGE
+#define SICSLOWPAN_REASS_MAXAGE (SICSLOWPAN_CONF_MAXAGE)
 #else
 #define SICSLOWPAN_REASS_MAXAGE 20
 #endif
@@ -512,9 +514,9 @@
  * \hideinitializer
  */
 #ifndef UIP_CONF_BUFFER_SIZE
-#define UIP_BUFSIZE UIP_LINK_MTU + UIP_LLH_LEN
+#define UIP_BUFSIZE (UIP_LINK_MTU + UIP_LLH_LEN)
 #else /* UIP_CONF_BUFFER_SIZE */
-#define UIP_BUFSIZE UIP_CONF_BUFFER_SIZE
+#define UIP_BUFSIZE (UIP_CONF_BUFFER_SIZE)
 #endif /* UIP_CONF_BUFFER_SIZE */
 
 
@@ -528,7 +530,7 @@
 #ifndef UIP_CONF_STATISTICS
 #define UIP_STATISTICS  0
 #else /* UIP_CONF_STATISTICS */
-#define UIP_STATISTICS UIP_CONF_STATISTICS
+#define UIP_STATISTICS (UIP_CONF_STATISTICS)
 #endif /* UIP_CONF_STATISTICS */
 
 /**
@@ -543,7 +545,7 @@
 #ifndef UIP_CONF_LOGGING
 #define UIP_LOGGING     0
 #else /* UIP_CONF_LOGGING */
-#define UIP_LOGGING     UIP_CONF_LOGGING
+#define UIP_LOGGING     (UIP_CONF_LOGGING)
 #endif /* UIP_CONF_LOGGING */
 
 /**
@@ -558,7 +560,7 @@
 #ifndef UIP_CONF_BROADCAST
 #define UIP_BROADCAST 0
 #else /* UIP_CONF_BROADCAST */
-#define UIP_BROADCAST UIP_CONF_BROADCAST
+#define UIP_BROADCAST (UIP_CONF_BROADCAST)
 #endif /* UIP_CONF_BROADCAST */
 
 /**
@@ -584,7 +586,7 @@ void uip_log(char *msg);
  * \hideinitializer
  */
 #ifdef UIP_CONF_LLH_LEN
-#define UIP_LLH_LEN UIP_CONF_LLH_LEN
+#define UIP_LLH_LEN (UIP_CONF_LLH_LEN)
 #else /* UIP_LLH_LEN */
 #define UIP_LLH_LEN     14
 #endif /* UIP_CONF_LLH_LEN */
@@ -611,9 +613,9 @@ void uip_log(char *msg);
  * \hideinitializer
  */
 #ifdef UIP_CONF_BYTE_ORDER
-#define UIP_BYTE_ORDER     UIP_CONF_BYTE_ORDER
+#define UIP_BYTE_ORDER     (UIP_CONF_BYTE_ORDER)
 #else /* UIP_CONF_BYTE_ORDER */
-#define UIP_BYTE_ORDER     UIP_LITTLE_ENDIAN
+#define UIP_BYTE_ORDER     (UIP_LITTLE_ENDIAN)
 #endif /* UIP_CONF_BYTE_ORDER */
 
 /** @} */

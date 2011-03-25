@@ -24,7 +24,8 @@ CONTIKI_SOURCEFILES        += $(CONTIKI_TARGET_SOURCEFILES)
 
 THREADS =
 
-CROSS=arm-linux-
+CROSS_COMPILE ?= arm-none-eabi-
+CROSS ?= $(CROSS_COMPILE)
 
 ### Compiler definitions
 CC       = $(CROSS)gcc
@@ -45,7 +46,7 @@ STARTUP=$(OBJECTDIR)/start.o
 
 ARCH_FLAGS= -mcpu=arm7tdmi-s -mthumb-interwork -march=armv4t -mtune=arm7tdmi-s -DCONFIG_ARM -D__ARM__ #-Wcast-align
 THUMB_FLAGS= -mthumb -mcallee-super-interworking
-ARM_FLAGS=
+ARM_FLAGS= -marm
 
 CFLAGSNO = -I. -I$(CONTIKI)/core -I$(CONTIKI_CPU) -I$(CONTIKI_CPU)/loader \
 	   -I$(CONTIKI_CPU)/dbg-io \
@@ -71,7 +72,12 @@ CUSTOM_RULE_C_TO_O=yes
 CFLAGS += -I$(OBJECTDIR) -I$(CONTIKI_CPU)/board -DBOARD=$(TARGET)
 
 $(OBJECTDIR)/board.h: $(OBJECTDIR) 
+ifneq (,$(findstring Windows,$(OS)))
+	${info Cygwin detected.}
+	ln -f $(CONTIKI_CPU)/board/$(TARGET).h $(OBJECTDIR)/board.h
+else
 	ln -sf ../$(CONTIKI_CPU)/board/$(TARGET).h $(OBJECTDIR)/board.h
+endif
 
 
 $(OBJECTDIR)/isr.o: $(CONTIKI_CPU)/src/isr.c
@@ -84,8 +90,6 @@ $(OBJECTDIR)/%.o: %.c
 	$(CC) $(CFLAGS) $(THUMB_FLAGS) -c $< -o $@
 
 CUSTOM_RULE_S_TO_OBJECTDIR_O = yes
-%.o: %.S
-	$(CC) $(CFLAGS) $(AFLAGS) $(ARM_FLAGS) $< -c
 
 $(OBJECTDIR)/%.o: %.S
 	$(CC) $(CFLAGS) $(AFLAGS) $(ARM_FLAGS) $< -c  -o $@

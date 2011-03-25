@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <simconf>
-  <project>../apps/mrm</project>
-  <project>../apps/mspsim</project>
-  <project>../apps/avrora</project>
-  <project>../apps/native_gateway</project>
   <simulation>
     <title>My simulation</title>
     <delaytime>0</delaytime>
@@ -16,14 +12,17 @@
       <success_ratio_tx>1.0</success_ratio_tx>
       <success_ratio_rx>1.0</success_ratio_rx>
     </radiomedium>
+    <events>
+      <logoutput>400000</logoutput>
+    </events>
     <motetype>
       se.sics.cooja.mspmote.SkyMoteType
       <identifier>sky1</identifier>
       <description>Sky Mote Type #1</description>
-      <source>../../../examples/rime/example-collect.c</source>
-      <commands>make clean TARGET=sky
+      <source EXPORT="discard">[CONTIKI_DIR]/examples/rime/example-collect.c</source>
+      <commands EXPORT="discard">make clean TARGET=sky
 make example-collect.sky TARGET=sky</commands>
-      <firmware>../../../examples/rime/example-collect.sky</firmware>
+      <firmware EXPORT="copy">[CONTIKI_DIR]/examples/rime/example-collect.sky</firmware>
       <moteinterface>se.sics.cooja.interfaces.Position</moteinterface>
       <moteinterface>se.sics.cooja.interfaces.IPAddress</moteinterface>
       <moteinterface>se.sics.cooja.interfaces.Mote2MoteRelations</moteinterface>
@@ -32,12 +31,15 @@ make example-collect.sky TARGET=sky</commands>
       <moteinterface>se.sics.cooja.mspmote.interfaces.SkyButton</moteinterface>
       <moteinterface>se.sics.cooja.mspmote.interfaces.SkyFlash</moteinterface>
       <moteinterface>se.sics.cooja.mspmote.interfaces.SkyByteRadio</moteinterface>
-      <moteinterface>se.sics.cooja.mspmote.interfaces.SkySerial</moteinterface>
+      <moteinterface>se.sics.cooja.mspmote.interfaces.MspSerial</moteinterface>
       <moteinterface>se.sics.cooja.mspmote.interfaces.SkyLED</moteinterface>
+      <moteinterface>se.sics.cooja.interfaces.RimeAddress</moteinterface>
+      <moteinterface>se.sics.cooja.interfaces.MoteAttributes</moteinterface>
+      <moteinterface>se.sics.cooja.mspmote.interfaces.SkyCoffeeFilesystem</moteinterface>
+      <moteinterface>se.sics.cooja.mspmote.interfaces.MspDebugOutput</moteinterface>
+      <moteinterface>se.sics.cooja.mspmote.interfaces.SkyTemperature</moteinterface>
     </motetype>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -49,10 +51,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>1</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -64,10 +65,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>2</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -79,10 +79,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>3</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -94,10 +93,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>4</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -109,10 +107,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>5</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -124,10 +121,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>6</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -139,10 +135,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>7</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -154,10 +149,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>8</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -169,10 +163,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>9</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -184,10 +177,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>10</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -199,10 +191,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>11</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -214,10 +205,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>12</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -229,10 +219,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>13</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -244,10 +233,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>14</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -259,10 +247,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>15</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -274,10 +261,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>16</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -289,10 +275,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>17</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -304,10 +289,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>18</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -319,10 +303,9 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>19</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
     <mote>
-      se.sics.cooja.mspmote.SkyMote
-      <motetype_identifier>sky1</motetype_identifier>
       <breakpoints />
       <interface_config>
         se.sics.cooja.interfaces.Position
@@ -334,6 +317,7 @@ make example-collect.sky TARGET=sky</commands>
         se.sics.cooja.mspmote.interfaces.MspMoteID
         <id>20</id>
       </interface_config>
+      <motetype_identifier>sky1</motetype_identifier>
     </mote>
   </simulation>
   <plugin>
@@ -343,178 +327,115 @@ make example-collect.sky TARGET=sky</commands>
     <height>227</height>
     <location_x>0</location_x>
     <location_y>0</location_y>
-    <minimized>false</minimized>
   </plugin>
   <plugin>
     se.sics.cooja.plugins.Visualizer
     <plugin_config>
-      <skin>Mote IDs</skin>
-      <skin>Radio environment (UDGM)</skin>
+      <skin>se.sics.cooja.plugins.skins.IDVisualizerSkin</skin>
+      <skin>se.sics.cooja.plugins.skins.UDGMVisualizerSkin</skin>
+      <viewport>1.685403700540615 0.0 0.0 1.685403700540615 23.872012513439184 -0.545889466623605</viewport>
     </plugin_config>
     <width>224</width>
-    <z>1</z>
+    <z>2</z>
     <height>225</height>
     <location_x>247</location_x>
     <location_y>1</location_y>
-    <minimized>false</minimized>
   </plugin>
   <plugin>
     se.sics.cooja.plugins.LogListener
     <plugin_config>
       <filter />
+      <formatted_time />
     </plugin_config>
     <width>469</width>
-    <z>2</z>
+    <z>0</z>
     <height>473</height>
     <location_x>0</location_x>
     <location_y>226</location_y>
-    <minimized>false</minimized>
   </plugin>
   <plugin>
     se.sics.cooja.plugins.ScriptRunner
     <plugin_config>
-      <script>TIMEOUT(300000, log.log("Timeout\n"));
+      <script>TIMEOUT(600000);
 
-function
-print_stats()
-{
-  log.log("Received " + total_received  + " messages, " +
-	  (total_received / nrNodes) + " messages/node, " +
-	  total_lost + " lost, " +
-	  (total_lost / nrNodes) + " lost/node, " +
-	  total_dups + " dups, " +
-	  (total_dups / nrNodes) + " dups/node, " +
-	  (total_hops / total_received) + " hops/message\n");
-  log.log("Seqnos: ");
-  for(i = 1; i &lt;= nrNodes; i++) {
-    log.log(seqnos[i] + " ");
+num_nodes = mote.getSimulation().getMotesCount();
+
+function print_stats() {
+  log.log("Received:\n");
+  for(i = 1; i &lt;= num_nodes; i++) {
+      log.log("Node " + i + " ");
+      if(i == sink) {
+          log.log("sink\n");
+      } else {
+          log.log("received: " + received[i] + " hops: " + hops[i] + "\n");
+      }
   }
-  log.log("\n");
-  log.log("Lost: ");
-  for(i = 1; i &lt;= nrNodes; i++) {
-    log.log(lost[i] + " ");
-  }
-  log.log("\n");
-  log.log("Dups: ");
-  for(i = 1; i &lt;= nrNodes; i++) {
-    log.log(dups[i] + " ");
-  }
-  log.log("\n");
-  log.log("Hops: ");
-  for(i = 1; i &lt;= nrNodes; i++) {
-    log.log(hops[i] + " ");
-  }
-  log.log("\n");
-  log.log("Received: ");
-  for(i = 1; i &lt;= nrNodes; i++) {
-    log.log(count[i] + " ");
-  }
-  log.log("\n");
 }
 
-/* Conf. */
-booted = new Array();
-count = new Array();
+/* Init */
+sink = 0;
 hops = new Array();
-seqnos = new Array();
-lost = new Array();
 dups = new Array();
-nrNodes = 20;
-total_received = 0;
-total_lost = 0;
-total_hops = 0;
-total_dups = 0;
-nodes_starting = true;
-for(i = 1; i &lt;= nrNodes; i++) {
-  booted[i] = false;
-  count[i] = 0;
-  hops[i] = 0;
-  seqnos[i] = -1;
-  lost[i] = 0;
-  dups[i] = 0;
+received = new Array();
+
+doubleFormat = new java.text.DecimalFormat("0.00");
+integerFormat = new java.text.DecimalFormat("00");
+for(i = 1; i &lt;= num_nodes; i++) {
+    received[i] = "__________";
+    hops[i] = received[i];
 }
 
-/* Wait until all nodes have started */
-while(nodes_starting) {
-  YIELD_THEN_WAIT_UNTIL(msg.startsWith('Starting'));
-  
-  log.log("Node " + id + " booted\n");
-  booted[id] = true;
-
-  for(i = 1; i &lt;= nrNodes; i++) {
-    if(!booted[i]) {
-      break;
-    }
-    if(i == nrNodes) {
-      nodes_starting = false;
-    }
-  }
-}
-
-/* Create sink */
-sink = id;
-GENERATE_MSG(1000, "continue");
-YIELD_THEN_WAIT_UNTIL(msg.equals("continue"));
-log.log("All nodes booted, creating sink at node " + sink + "\n");
-mote.getInterfaces().getButton().clickButton()
+log.log("Simulation has " + num_nodes + " nodes\n");
 
 while(true) {
-  YIELD();
+    YIELD();
+    log.log(time + " " + id + " "+ msg + "\n");
+    /* Count sensor data packets */
+    if(msg.startsWith("Sink got message")) {
+        node_text = msg.split(" ")[4];
+        seqno_text = msg.split(" ")[6];
+        hops_text = msg.split(" ")[8];
+        if(node_text) {
+            source = parseInt(node_text);
+            seqno = parseInt(seqno_text);
+            hop = parseInt(hops_text);
+            dups = received[source].substr(seqno, 1);
+            if(dups == "_") {
+                dups = 1;
+            } else if(dups &lt; 9) {
+                dups++;
+            }
+            received[source] = received[source].substr(0, seqno) + dups +
+                received[source].substr(seqno + 1, 10 - seqno);
 
-  /* Count sensor data packets */
-  if(msg.startsWith("Sink")) {
-    node_text = msg.split(" ")[4];
-    seqno_text = msg.split(" ")[6];
-    hops_text = msg.split(" ")[8];
-    if(node_text) {
-      source = parseInt(node_text);
-      seqno = parseInt(seqno_text);
-      hop = parseInt(hops_text);
-      count[source]++;
-      hops[source] = hop;
-      seqno_gap = seqno - seqnos[source];
-      seqnos[source] = seqno;
-      
-      total_received++;
-      total_hops += hop;
-      
-      if(seqno_gap == 2) {
-	total_lost += seqno_gap - 1;
-	lost[source] += seqno_gap - 1;
-      } else if(seqno_gap == 0) {
-	total_dups += 1;
-	dups[source] += 1;
-      }
+            if(hop &gt; 9) {
+                hop = "+";
+            }
+            hops[source] = hops[source].substr(0, seqno) + hop +
+                hops[source].substr(seqno + 1, 10 - seqno);
+            print_stats();
+        }
     }
-    /* Fail if the sink has received more than 10 messages from any node. */
-    for(i = 1; i &lt;= nrNodes; i++) {
-      if(count[i] &gt; 10) {
-	print_stats();
-	log.testFailed(); /* We are done! */
-      }
+    /* Signal OK if all nodes have reported 10 messages. */
+    num_reported = 0;
+    for(i = 1; i &lt;= num_nodes; i++) {
+        if(!isNaN(received[i])) {
+            num_reported++;
+        }
     }
-    
-    /* Wait until the sink have received at least two messages from every node */
-    for(i = 1; i &lt;= nrNodes; i++) {
-      if(count[i] &lt; 2) {
-	break;
-      }
-      if(i == nrNodes) {
-	print_stats();
-	log.testOK();
-      }
+
+    if(num_reported == num_nodes) {
+        print_stats();
+        log.testOK();
     }
-    print_stats();
-  }
-}</script>
+  }</script>
       <active>true</active>
     </plugin_config>
     <width>600</width>
-    <z>0</z>
+    <z>1</z>
     <height>700</height>
     <location_x>469</location_x>
     <location_y>0</location_y>
-    <minimized>false</minimized>
   </plugin>
 </simconf>
 

@@ -26,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $Id: CollectServer.java,v 1.1 2010/11/03 14:53:05 adamdunkels Exp $
+ * $Id: CollectServer.java,v 1.5 2010/12/07 22:46:13 adamdunkels Exp $
  *
  * -----------------------------------------------------------------
  *
@@ -34,8 +34,8 @@
  *
  * Authors : Joakim Eriksson, Niclas Finne
  * Created : 3 jul 2008
- * Updated : $Date: 2010/11/03 14:53:05 $
- *           $Revision: 1.1 $
+ * Updated : $Date: 2010/12/07 22:46:13 $
+ *           $Revision: 1.5 $
  */
 
 package se.sics.contiki.collect;
@@ -105,7 +105,7 @@ public class CollectServer implements SerialConnectionListener {
   public static final String SENSORDATA_FILE = "sensordata.log";
   public static final String CONFIG_DATA_FILE = "collect-data.conf";
   public static final String INIT_SCRIPT = "collect-init.script";
-  public static final String FIRMWARE_FILE = "sky-shell.ihex";
+  public static final String FIRMWARE_FILE = "collect-view-shell.ihex";
 
   /* Categories for the tab pane */
   private static final String MAIN = "main";
@@ -250,6 +250,7 @@ public class CollectServer implements SerialConnectionListener {
     NodeControl nodeControl = new NodeControl(this, MAIN);
 
     visualizers = new Visualizer[] {
+        nodeControl,
         mapPanel,
         new MapPanel(this, "Network Graph", MAIN, false),
         new BarChartPanel(this, SENSORS, "Average Temperature", "Temperature", "Nodes", "Celsius",
@@ -563,7 +564,6 @@ public class CollectServer implements SerialConnectionListener {
           }
         },
         new NodeInfoPanel(this, MAIN),
-        nodeControl,
         serialConsole
     };
     for (int i = 0, n = visualizers.length; i < n; i++) {
@@ -810,6 +810,10 @@ public class CollectServer implements SerialConnectionListener {
     window.setVisible(false);
   }
 
+  public void setUseSensorDataLog(boolean useSensorLog) {
+    this.isSensorLogUsed = useSensorLog;
+  }
+
   public void setExitOnRequest(boolean doExit) {
     this.doExitOnRequest = doExit;
     if (exitItem != null) {
@@ -886,6 +890,14 @@ public class CollectServer implements SerialConnectionListener {
 
   public String getConfig(String property, String defaultValue) {
     return configTable.getProperty(property, config.getProperty(property, defaultValue));
+  }
+
+  public void setConfig(String property, String value) {
+    configTable.setProperty(property, value);
+  }
+
+  public void removeConfig(String property) {
+    configTable.remove(property);
   }
 
   public int getDefaultMaxItemCount() {
@@ -1229,6 +1241,13 @@ public class CollectServer implements SerialConnectionListener {
       for(Visualizer v : visualizers) {
         v.nodesSelected(null);
         v.clearNodeData();
+      }
+    }
+    // Remove any saved node positions
+    for(String key: configTable.keySet().toArray(new String[0])) {
+      String property = key.toString();
+      if (!property.startsWith("collect")) {
+        configTable.remove(property);
       }
     }
   }

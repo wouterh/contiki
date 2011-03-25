@@ -322,10 +322,12 @@ public abstract class SerialUI extends Log implements SerialPort {
     } else {
       if (data == 0x7e) {
         tosChars++;
+        totalTOSChars = 0; /* XXX Disabled TOS mode due to error */
         totalTOSChars++;
         if (tosChars == 2) {
           if (totalTOSChars > slipCounter) {
               tosMode = true;
+              tosMode = false; /* XXX Disabled TOS mode due to error */
               /* already read one char here */
               tosPos = 1;
           } else {
@@ -337,13 +339,17 @@ public abstract class SerialUI extends Log implements SerialPort {
       }
       if (data == '\n') {
         lastLogMessage = newMessage.toString();
+        lastLogMessage = lastLogMessage.replaceAll("[^\\p{Print}]", ""); 
         newMessage.setLength(0);
         this.setChanged();
         this.notifyObservers(getMote());
       } else {
         newMessage.append((char) data);
         if (newMessage.length() > MAX_LENGTH) {
-          logger.warn("Dropping too large log message (>" + MAX_LENGTH + " bytes).");
+          /*logger.warn("Dropping too large log message (>" + MAX_LENGTH + " bytes).");*/
+        	lastLogMessage = "# [1024 bytes binary data]";
+          this.setChanged();
+          this.notifyObservers(getMote());
           newMessage.setLength(0);
         }
       }

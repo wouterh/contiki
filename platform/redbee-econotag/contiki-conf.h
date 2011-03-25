@@ -84,7 +84,14 @@
 #define CONTIKI_MACA_RAW_MODE       0
 #define USE_32KHZ_XTAL              0
 
-#define BLOCKING_TX 0
+#define BLOCKING_TX 1
+#define NULLRDC_CONF_802154_AUTOACK_HW 1
+
+#define USE_WDT 0
+
+#ifndef WDT_TIMEOUT
+#define WDT_TIMEOUT 5000 /* watchdog timeout in ms */
+#endif
 
 /* end of mc1322x specific config. */
 
@@ -106,7 +113,7 @@
 #define NETSTACK_CONF_NETWORK sicslowpan_driver
 #define NETSTACK_CONF_MAC     nullmac_driver 
 /*#define NETSTACK_CONF_RDC     contikimac_driver*/ /* contikimac for redbee hasn't been well tested */
-#define NETSTACK_CONF_RDC     nullrdc_framer_driver
+#define NETSTACK_CONF_RDC     nullrdc_driver
 #define NETSTACK_CONF_RADIO   contiki_maca_driver
 #define NETSTACK_CONF_FRAMER  framer_802154
 

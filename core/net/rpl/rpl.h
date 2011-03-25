@@ -28,149 +28,130 @@
  *
  * This file is part of the Contiki operating system.
  *
- * Author: Joakim Eriksson, Nicolas Tsiftes
+ * \file
+ *	ContikiRPL - an implementation of the routing protocol for low 
+ *	power and lossy networks. See: draft-ietf-roll-rpl-17.
+ * \author
+ *	Joakim Eriksson <joakime@sics.se> & Nicolas Tsiftes <nvt@sics.se>
  *
- * $Id: rpl.h,v 1.23 2010/10/28 20:39:06 joxe Exp $
  */
 
 #ifndef RPL_H
 #define RPL_H
 
-/*
- * ContikiRPL - an implementation of the routing protocol for low power and
- * lossy networks. See: draft-ietf-roll-rpl-09.
- *
- * --
- * The DIOs handle prefix information option for setting global IP addresses
- * on the nodes, but the current handling is not awaiting the join of the DAG
- * so it does not currently support multiple DAGs.
- */
-
 #include "lib/list.h"
 #include "net/uip.h"
-#include "sys/clock.h"
-#include "sys/ctimer.h"
 #include "net/uip-ds6.h"
+#include "sys/ctimer.h"
 
 /* set to 1 for some statistics on trickle / DIO */
 #ifndef RPL_CONF_STATS
-#define RPL_CONF_STATS 1
+#define RPL_CONF_STATS 0
 #endif /* RPL_CONF_STATS */
 
-/* The RPL Codes for the message types */
-#define RPL_CODE_DIS                     0   /* DIS message */
-#define RPL_CODE_DIO                     1   /* DIO message */
-#define RPL_CODE_DAO                     2   /* DAO message */
-#define RPL_CODE_DAO_ACK                 3   /* DAO ACK message */
-
-#define RPL_CODE_SEC_DIS               0x80   /* DIS message */
-#define RPL_CODE_SEC_DIO               0x81   /* DIO message */
-#define RPL_CODE_SEC_DAO               0x82   /* DAO message */
-#define RPL_CODE_SEC_DAO_ACK           0x83   /* DAO ACK message */
-
-/* RPL DIO/DAO suboption types */
-#define RPL_DIO_SUBOPT_PAD1              0   /* Pad1 */
-#define RPL_DIO_SUBOPT_PADN              1   /* PadN */
-#define RPL_DIO_SUBOPT_DAG_MC            2   /* DAG metric container */
-#define RPL_DIO_SUBOPT_ROUTE_INFO        3   /* Route information */
-#define RPL_DIO_SUBOPT_DAG_CONF          4   /* DAG configuration */
-#define RPL_DIO_SUBOPT_TARGET            5   /* Target */
-#define RPL_DIO_SUBOPT_TRANSIT           6   /* Transit information */
-#define RPL_DIO_SUBOPT_SOLICITED_INFO    7   /* Solicited information */
-#define RPL_DIO_SUBOPT_PREFIX_INFO       8   /* Prefix information option */
-
-#define RPL_DAO_K_FLAG                   0x80 /* DAO ACK requested */
-#define RPL_DAO_D_FLAG                   0x40 /* DODAG ID Present */
-
-/*---------------------------------------------------------------------------*/
-/* Default values for RPL constants and variables. */
-
-#define DEFAULT_DAO_LATENCY             (CLOCK_SECOND * (1 + (random_rand() & 0xf)))
-
-/* Special value indicating immediate removal. */
-#define ZERO_LIFETIME                   0
-
-/* Special value indicating that a DAO should not expire. */
-#define INFINITE_LIFETIME               0xffffffff
-
-/* Default route lifetime in seconds. */
-#define DEFAULT_ROUTE_LIFETIME          INFINITE_LIFETIME
-
-#define DEFAULT_MIN_HOPRANKINC          256
-#define DEFAULT_MAX_RANKINC             3*DEFAULT_MIN_HOPRANKINC
-
-#define DAG_RANK(fixpt_rank, dag)	((fixpt_rank) / dag->min_hoprankinc)
-
-/* Rank of a node outside the LLN. */
-#define BASE_RANK                       0
-
-/* Rank of a root node. */
-#define ROOT_RANK                       DEFAULT_MIN_HOPRANKINC
-
-#define INFINITE_RANK                   0xffff
-
-#define RPL_DEFAULT_INSTANCE            0
-#define RPL_ANY_INSTANCE               -1
-
-#define RPL_DEFAULT_OCP                 1
-
-/* Represents 2^n ms. */
-/* Default alue according to the specification is 3 which
-   means 8 milliseconds - this is not a reasonable value if
-   using power-saving / duty-cycling    */
-#define DEFAULT_DIO_INTERVAL_MIN        12
-
-/* Maximum amount of timer doublings. */
-#define DEFAULT_DIO_INTERVAL_DOUBLINGS  8
-
-/* Default DIO redundancy. */
-#define DEFAULT_DIO_REDUNDANCY          10
-
-/* Expire DAOs from neighbors that do not respond in this time. (seconds) */
-#define DAO_EXPIRATION_TIMEOUT          60
-/*---------------------------------------------------------------------------*/
-#define RPL_INSTANCE_LOCAL_FLAG         0x80
-#define RPL_INSTANCE_D_FLAG             0x40
-
-#define RPL_ROUTE_FROM_INTERNAL         0
-#define RPL_ROUTE_FROM_UNICAST_DAO      1
-#define RPL_ROUTE_FROM_MULTICAST_DAO    2
-#define RPL_ROUTE_FROM_DIO              3
-
-/* DAG Metric Container Object Types, to be confirmed by IANA. */
-#define RPL_DAG_MC_NSA                  1
-#define RPL_DAG_MC_NE                   2
-#define RPL_DAG_MC_HC                   3
-#define RPL_DAG_MC_THROUGHPUT           4
-#define RPL_DAG_MC_LATENCY              5
-#define RPL_DAG_MC_LQL                  6
-#define RPL_DAG_MC_ETX                  7
-#define RPL_DAG_MC_LC                   8
-
-/* DIS related */
-#define RPL_DIS_SEND                    1
-#ifdef  RPL_DIS_INTERVAL_CONF
-#define RPL_DIS_INTERVAL                RPL_DIS_INTERVAL_CONF
+/* 
+ * Select routing metric supported at runtime. This must be a valid
+ * DAG Metric Container Object Type (see below). Currently, we only 
+ * support RPL_DAG_MC_ETX and RPL_DAG_MC_ENERGY.
+ */
+#ifdef RPL_CONF_DAG_MC
+#define RPL_DAG_MC RPL_CONF_DAG_MC
 #else
-#define RPL_DIS_INTERVAL                60
-#endif
-#define RPL_DIS_START_DELAY             5
+#define RPL_DAG_MC RPL_DAG_MC_ETX
+#endif /* RPL_CONF_DAG_MC */
 
+/*
+ * The objective function used by RPL is configurable through the 
+ * RPL_CONF_OF parameter. This should be defined to be the name of an 
+ * rpl_of_t object linked into the system image, e.g., rpl_of0.
+ */
+#ifdef RPL_CONF_OF
+#define RPL_OF RPL_CONF_OF
+#else
+/* ETX is the default objective function. */
+#define RPL_OF rpl_of_etx
+#endif /* RPL_CONF_OF */
+
+/* This value decides which DAG instance we should participate in by default. */
+#define RPL_DEFAULT_INSTANCE		0
+
+/* This value is used to access an arbitrary DAG. It will likely be 
+   replaced when we support multiple DAGs more. */
+#define RPL_ANY_INSTANCE               -1
+/*---------------------------------------------------------------------------*/
+/* The amount of parents that this node has in a particular DAG. */
+#define RPL_PARENT_COUNT(dag)   list_length((dag)->parents)
+/*---------------------------------------------------------------------------*/
 typedef uint16_t rpl_rank_t;
 typedef uint16_t rpl_ocp_t;
 
+/*---------------------------------------------------------------------------*/
+/* DAG Metric Container Object Types, to be confirmed by IANA. */
+#define RPL_DAG_MC_NONE			0 /* Local identifier for empty MC */
+#define RPL_DAG_MC_NSA                  1 /* Node State and Attributes */
+#define RPL_DAG_MC_ENERGY               2 /* Node Energy */
+#define RPL_DAG_MC_HOPCOUNT             3 /* Hop Count */
+#define RPL_DAG_MC_THROUGHPUT           4 /* Throughput */
+#define RPL_DAG_MC_LATENCY              5 /* Latency */
+#define RPL_DAG_MC_LQL                  6 /* Link Quality Level */
+#define RPL_DAG_MC_ETX                  7 /* Expected Transmission Count 
+*/
+#define RPL_DAG_MC_LC                   8 /* Link Color */
+
+/* DAG Metric Container flags. */
+#define RPL_DAG_MC_FLAG_P               0x8
+#define RPL_DAG_MC_FLAG_C               0x4
+#define RPL_DAG_MC_FLAG_O               0x2
+#define RPL_DAG_MC_FLAG_R               0x1
+
+/* DAG Metric Container aggregation mode. */
+#define RPL_DAG_MC_AGGR_ADDITIVE        0
+#define RPL_DAG_MC_AGGR_MAXIMUM         1
+#define RPL_DAG_MC_AGGR_MINIMUM         2
+#define RPL_DAG_MC_AGGR_MULTIPLICATIVE  3
+
+/* The bit index within the flags field of
+   the rpl_metric_object_energy structure. */
+#define RPL_DAG_MC_ENERGY_INCLUDED	3
+#define RPL_DAG_MC_ENERGY_TYPE		1
+#define RPL_DAG_MC_ENERGY_ESTIMATION	0
+
+#define RPL_DAG_MC_ENERGY_TYPE_MAINS		0
+#define RPL_DAG_MC_ENERGY_TYPE_BATTERY		1
+#define RPL_DAG_MC_ENERGY_TYPE_SCAVENGING	2
+
+struct rpl_metric_object_energy {
+  uint8_t flags;
+  uint8_t energy_est;
+};
+
+/* Logical representation of a DAG Metric Container. */
+struct rpl_metric_container {
+  uint8_t type;
+  uint8_t flags;
+  uint8_t aggr;
+  uint8_t prec;
+  uint8_t length;
+  union metric_object {
+    struct rpl_metric_object_energy energy;
+    uint16_t etx;
+  } obj;
+};
+typedef struct rpl_metric_container rpl_metric_container_t;
+/*---------------------------------------------------------------------------*/
+struct rpl_dag;
+/*---------------------------------------------------------------------------*/
 struct rpl_parent {
   struct rpl_parent *next;
-  void *dag;
+  struct rpl_dag *dag;
+  rpl_metric_container_t mc;
   uip_ipaddr_t addr;
   rpl_rank_t rank;
-  uint8_t local_confidence;
+  uint8_t link_metric;
   uint8_t dtsn;
   uint8_t updated;
 };
-
 typedef struct rpl_parent rpl_parent_t;
-
 /*---------------------------------------------------------------------------*/
 /*
  * API for RPL objective functions (OF)
@@ -196,18 +177,23 @@ typedef struct rpl_parent rpl_parent_t;
  *  If "parent" is NULL, the objective function selects a default increment
  *  that is adds to the "base_rank". Otherwise, the OF uses information known
  *  about "parent" to select an increment to the "base_rank".
+ *
+ * update_metric_container(dag)
+ *
+ *  Updates the metric container for outgoing DIOs in a certain DAG.
+ *  If the objective function of the DAG does not use metric containers, 
+ *  the function should set the object type to RPL_DAG_MC_NONE.
  */
 struct rpl_of {
-  void (*reset)(void *);
+  void (*reset)(struct rpl_dag *);
   void (*parent_state_callback)(rpl_parent_t *, int, int);
   rpl_parent_t *(*best_parent)(rpl_parent_t *, rpl_parent_t *);
   rpl_rank_t (*calculate_rank)(rpl_parent_t *, rpl_rank_t);
+  void (*update_metric_container)(struct rpl_dag *);
   rpl_ocp_t ocp;
 };
-
 typedef struct rpl_of rpl_of_t;
 /*---------------------------------------------------------------------------*/
-
 /* RPL DIO prefix suboption */
 struct rpl_prefix {
   uip_ipaddr_t prefix;
@@ -215,53 +201,12 @@ struct rpl_prefix {
   uint8_t length;
   uint8_t flags;
 };
-
 typedef struct rpl_prefix rpl_prefix_t;
-
-/* Logical representation of a DAG Information Object (DIO.) */
-struct rpl_dio {
-  uip_ipaddr_t dag_id;
-  rpl_ocp_t ocp;
-  rpl_rank_t rank;
-  uint8_t grounded;
-  uint8_t dst_adv_trigger;
-  uint8_t dst_adv_supported;
-  uint8_t preference;
-  uint8_t version;
-  uint8_t instance_id;
-  uint8_t dtsn;
-  uint8_t dag_intdoubl;
-  uint8_t dag_intmin;
-  uint8_t dag_redund;
-  rpl_rank_t dag_max_rankinc;
-  rpl_rank_t dag_min_hoprankinc;
-  rpl_prefix_t destination_prefix;
-  rpl_prefix_t prefix_info;
-};
-
-typedef struct rpl_dio rpl_dio_t;
-
-#if RPL_CONF_STATS
-/* Statistics for fault management. */
-struct rpl_stats {
-  uint16_t mem_overflows;
-  uint16_t local_repairs;
-  uint16_t global_repairs;
-  uint16_t malformed_msgs;
-  uint16_t resets;
-};
-typedef struct rpl_stats rpl_stats_t;
-
-extern rpl_stats_t rpl_stats;
-
-#define RPL_STAT(code)	(code) 
-#else
-#define RPL_STAT(code)
-#endif /* RPL_CONF_STATS */
-
+/*---------------------------------------------------------------------------*/
 /* Directed Acyclic Graph */
 struct rpl_dag {
   /* DAG configuration */
+  rpl_metric_container_t mc;
   rpl_of_t *of;
   uip_ipaddr_t dag_id;
   /* The current default router - used for routing "upwards" */
@@ -271,25 +216,29 @@ struct rpl_dag {
   uint8_t dtsn_out;
   uint8_t instance_id;
   uint8_t version;
-  uint8_t preference;
   uint8_t grounded;
+  uint8_t mop;
+  uint8_t preference;
   uint8_t dio_intdoubl;
   uint8_t dio_intmin;
   uint8_t dio_redundancy;
   rpl_rank_t max_rankinc;
   rpl_rank_t min_hoprankinc;
   uint8_t used;
+  uint8_t default_lifetime;
+  uint16_t lifetime_unit; /* lifetime in seconds = l_u * d_l */
   /* live data for the DAG */
   uint8_t joined;
   uint8_t dio_intcurrent;
-  uint8_t dio_send; /* for keeping track of which mode the timer is in */
+  uint8_t dio_send; /* for keeping track of which mode the timer is in 
+*/
   uint8_t dio_counter;
 #if RPL_CONF_STATS
   uint16_t dio_totint;
   uint16_t dio_totsend;
   uint16_t dio_totrecv;
 #endif /* RPL_CONF_STATS */
-  uint16_t dio_next_delay; /* delay for completion of dio interval */
+  uint32_t dio_next_delay; /* delay for completion of dio interval */
   struct ctimer dio_timer;
   struct ctimer dao_timer;
   rpl_parent_t *preferred_parent;
@@ -297,61 +246,14 @@ struct rpl_dag {
   list_t parents;
   rpl_prefix_t prefix_info;
 };
-
 typedef struct rpl_dag rpl_dag_t;
-
 /*---------------------------------------------------------------------------*/
-/* RPL macros. */
-#define RPL_PARENT_COUNT(dag)	list_length((dag)->parents)
-/*---------------------------------------------------------------------------*/
-/* ICMPv6 functions for RPL. */
-void dis_output(uip_ipaddr_t *addr);
-void dio_output(rpl_dag_t *, uip_ipaddr_t *uc_addr);
-void dao_output(rpl_parent_t *, uint32_t lifetime);
-void dao_ack_output(rpl_dag_t *, uip_ipaddr_t *, uint8_t);
-void uip_rpl_input(void);
-
-/* RPL logic functions. */
+/* Public RPL functions. */
+void rpl_init(void);
 rpl_dag_t *rpl_set_root(uip_ipaddr_t *);
 int rpl_set_prefix(rpl_dag_t *dag, uip_ipaddr_t *prefix, int len);
 int rpl_repair_dag(rpl_dag_t *dag);
-void rpl_local_repair(rpl_dag_t *dag);
 int rpl_set_default_route(rpl_dag_t *dag, uip_ipaddr_t *from);
-void rpl_process_dio(uip_ipaddr_t *, rpl_dio_t *);
-int rpl_process_parent_event(rpl_dag_t *, rpl_parent_t *);
-
-/* DAG allocation and deallocation. */
-rpl_dag_t *rpl_alloc_dag(uint8_t);
-void rpl_free_dag(rpl_dag_t *);
-
-/* DAG parent management function. */
-rpl_parent_t *rpl_add_parent(rpl_dag_t *, rpl_dio_t *dio, uip_ipaddr_t *);
-rpl_parent_t *rpl_find_parent(rpl_dag_t *, uip_ipaddr_t *);
-int rpl_remove_parent(rpl_dag_t *, rpl_parent_t *);
-rpl_parent_t *rpl_select_parent(rpl_dag_t *dag);
-void rpl_recalculate_ranks(void);
-
-void rpl_join_dag(rpl_dag_t *);
 rpl_dag_t *rpl_get_dag(int instance_id);
-rpl_dag_t *rpl_find_dag(unsigned char aucIndex);
-
-/* RPL routing table functions. */
-void rpl_remove_routes(rpl_dag_t *dag);
-uip_ds6_route_t *rpl_add_route(rpl_dag_t *dag, uip_ipaddr_t *prefix,
-                               int prefix_len, uip_ipaddr_t *next_hop);
-void rpl_purge_routes(void);
-
-/* Objective function. */
-rpl_of_t *rpl_find_of(rpl_ocp_t);
-
-/* Timer functions. */
-void rpl_schedule_dao(rpl_dag_t *);
-void rpl_reset_dio_timer(rpl_dag_t *, uint8_t);
-void rpl_reset_periodic_timer(void);
-
-/* Route poisoning. */
-void rpl_poison_routes(rpl_dag_t *, rpl_parent_t *);
 /*---------------------------------------------------------------------------*/
-void rpl_init(void);
-
 #endif /* RPL_H */

@@ -47,7 +47,7 @@
  *  \file
  *  \brief This file contains low-level radio driver code.
  *
- *   $Id: hal.h,v 1.3 2010/02/26 21:15:29 dak664 Exp $
+ *   $Id: hal.h,v 1.5 2010/12/03 20:42:01 dak664 Exp $
 */
 
 #ifndef HAL_AVR_H
@@ -55,9 +55,7 @@
 /*============================ INCLUDE =======================================*/
 #include <stdint.h>
 #include <stdbool.h>
-#include <avr/io.h>
-#include <avr/interrupt.h>
-#include <util/crc16.h>
+//#include <util/crc16.h>
 #include "contiki-conf.h"
 /*============================ MACROS ========================================*/
 
@@ -75,14 +73,16 @@
 // RAVENUSB_C : used for USB key or Raven card 
 // RCB_B : RZ200 kit from Atmel based on 1281V
 // ZIGBIT : Zigbit module from Meshnetics
+// ATMEGA128RFA1 : Bare chip with internal radio
 #define RAVEN_D	    4
 #define RAVENUSB_C  1
 #define RCB_B	    	2
 #define ZIGBIT			3
+#define ATMEGA128RFA1   4
 
 
 
-
+/* TODO: Move to platform (or CPU specific) */
 #if RCB_REVISION == RCB_B
 /* 1281 rcb */
 #   define SSPORT     B
@@ -168,10 +168,73 @@
 #   define HAS_CW_MODE
 #   define HAS_SPARE_TIMER
 
+#elif HARWARE_REVISION == ATMEGA128RFA1
+/* ATmega1281 with internal AT86RF231 radio */
+#if 0
+#   define SSPORT     B
+#   define SSPIN      (0x04)
+#   define SPIPORT    B
+#   define MOSIPIN    (0x05)
+#   define MISOPIN    (0x06)
+#   define SCKPIN     (0x07)
+#   define RSTPORT    B
+#   define RSTPIN     (0x01)
+#   define IRQPORT    D
+#   define IRQPIN     (0x06)
+#   define SLPTRPORT  B
+#   define SLPTRPIN   (0x03)
+#   define TXCWPORT   B
+#   define TXCWPIN    (0x00)
+#endif
+#   define SLPTRPORT  TRXPR
+#   define SLPTRPIN   1
+#   define USART      1
+#   define USARTVECT  USART1_RX_vect
+#   define TICKTIMER  3
+#   define HAS_CW_MODE
+#   define HAS_SPARE_TIMER
+
+#elif CONTIKI_TARGET_MULLE
+/* mulle 5.2 (TODO: move to platform specific) */
+
+#   define SSPORT     3
+#   define SSPIN      5
+#   define MOSIPORT   1
+#   define MOSIPIN    1
+#   define MISOPORT   1
+#   define MISOPIN    0
+#   define SCKPORT    3
+#   define SCKPIN     3
+#   define RSTPORT    4
+#   define RSTPIN     3
+#   define IRQPORT    8
+#   define IRQPIN     3
+#   define SLPTRPORT  0
+#   define SLPTRPIN   7
+#   define HAS_SPARE_TIMER
+
+
 #else
 
 #error "Platform undefined in hal.h"
 
+#endif
+
+/* For architectures that have all SPI signals on the same port */
+#ifndef SSPORT
+#define SSPORT SPIPORT
+#endif
+
+#ifndef SCKPORT
+#define SCKPORT SPIPORT
+#endif
+
+#ifndef MOSIPORT
+#define MOSIPORT SPIPORT
+#endif
+
+#ifndef MISOPORT
+#define MISOPORT SPIPORT
 #endif
 
 /** \} */
@@ -185,6 +248,7 @@
  * if TICKTIMER is defined as 0.
  * \{
  */
+#if defined(__AVR__)
 #define CAT(x, y)      x##y
 #define CAT2(x, y, z)  x##y##z
 #define DDR(x)         CAT(DDR,  x)
@@ -212,6 +276,39 @@
 #define COMPVECT(x)    CAT2(TIMER,x,_COMPA_vect)
 #define UDREVECT(x)    CAT2(USART,x,_UDRE_vect)
 #define RXVECT(x)      CAT2(USART,x,_RX_vect)
+#endif
+
+/* TODO: Move to CPU specific */
+#if defined(CONTIKI_TARGET_MULLE)
+#define CAT(x, y)      x##y.BYTE
+#define CAT2(x, y, z)  x##y##z.BYTE
+#define DDR(x)         CAT(PD,  x)
+#define PORT(x)        CAT(P, x)
+#define PIN(x)         CAT(P, x)
+#define UCSR(num, let) CAT2(UCSR,num,let)
+#define RXEN(x)        CAT(RXEN,x)
+#define TXEN(x)        CAT(TXEN,x)
+#define TXC(x)         CAT(TXC,x)
+#define RXC(x)         CAT(RXC,x)
+#define RXCIE(x)       CAT(RXCIE,x)
+#define UCSZ(x,y)      CAT2(UCSZ,x,y)
+#define UBRR(x,y)      CAT2(UBRR,x,y)
+#define UDRE(x)        CAT(UDRE,x)
+#define UDRIE(x)       CAT(UDRIE,x)
+#define UDR(x)         CAT(UDR,x)
+#define TCNT(x)        CAT(TCNT,x)
+#define TIMSK(x)       CAT(TIMSK,x)
+#define TCCR(x,y)      CAT2(TCCR,x,y)
+#define COM(x,y)       CAT2(COM,x,y)
+#define OCR(x,y)       CAT2(OCR,x,y)
+#define CS(x,y)        CAT2(CS,x,y)
+#define WGM(x,y)       CAT2(WGM,x,y)
+#define OCIE(x,y)      CAT2(OCIE,x,y)
+#define COMPVECT(x)    CAT2(TIMER,x,_COMPA_vect)
+#define UDREVECT(x)    CAT2(USART,x,_UDRE_vect)
+#define RXVECT(x)      CAT2(USART,x,_RX_vect)
+#endif
+
 /** \} */
 
 /**
@@ -220,6 +317,15 @@
  *       that the source code can directly use.
  * \{
  */
+#if defined(__AVR_ATmega128RFA1__)
+
+#define hal_set_rst_low( )    ( TRXPR &= ~( 1 << TRXRST ) ) /**< This macro pulls the RST pin low. */
+#define hal_set_rst_high( )   ( TRXPR |= ( 1 << TRXRST ) ) /**< This macro pulls the RST pin high. */
+#define hal_set_slptr_high( ) ( TRXPR |= ( 1 << SLPTR ) )      /**< This macro pulls the SLP_TR pin high. */
+#define hal_set_slptr_low( )  ( TRXPR &= ~( 1 << SLPTR ) )     /**< This macro pulls the SLP_TR pin low. */
+#define hal_get_slptr( ) (    ( TRXPR & ( 1 << SLPTR ) ) >> SLPTR )  /**< Read current state of the SLP_TR pin (High/Low). */
+
+#else
 #define SLP_TR                SLPTRPIN            /**< Pin number that corresponds to the SLP_TR pin. */
 #define DDR_SLP_TR            DDR( SLPTRPORT )    /**< Data Direction Register that corresponds to the port where SLP_TR is connected. */
 #define PORT_SLP_TR           PORT( SLPTRPORT )   /**< Port (Write Access) where SLP_TR is connected. */
@@ -230,22 +336,35 @@
 #define RST                   RSTPIN              /**< Pin number that corresponds to the RST pin. */
 #define DDR_RST               DDR( RSTPORT )      /**< Data Direction Register that corresponds to the port where RST is */
 #define PORT_RST              PORT( RSTPORT )     /**< Port (Write Access) where RST is connected. */
-#define PIN_RST               PIN( RSTPORT )      /**< Pin (Read Access) where RST is connected. */
+#define PIN_RST               PIN( RSTPORT /* BUG? */)      /**< Pin (Read Access) where RST is connected. */
 #define hal_set_rst_high( )   ( PORT_RST |= ( 1 << RST ) )  /**< This macro pulls the RST pin high. */
 #define hal_set_rst_low( )    ( PORT_RST &= ~( 1 << RST ) ) /**< This macro pulls the RST pin low. */
 #define hal_get_rst( )        ( ( PIN_RST & ( 1 << RST )  ) >> RST )  /**< Read current state of the RST pin (High/Low). */
 #define HAL_SS_PIN            SSPIN               /**< The slave select pin. */
+#define HAL_SCK_PIN           SCKPIN              /**< Data bit for SCK. */
+#define HAL_MOSI_PIN          MOSIPIN
+#define HAL_MISO_PIN          MISOPIN
 #define HAL_PORT_SPI          PORT( SPIPORT )     /**< The SPI module is located on PORTB. */
+#define HAL_PORT_SS            PORT( SSPORT )
+#define HAL_PORT_SCK           PORT( SCKPORT )
+#define HAL_PORT_MOSI          PORT( MOSIPORT )     /**< The SPI module uses GPIO might be split on different ports. */
+#define HAL_PORT_MISO          PORT( MISOPORT )     /**< The SPI module uses GPIO might be split on different ports. */
 #define HAL_DDR_SPI           DDR( SPIPORT )      /**< Data Direction Register for PORTB. */
+#define HAL_DDR_SS             DDR( SSPORT )      /**< Data Direction Register for MISO GPIO pin. */
+#define HAL_DDR_SCK            DDR( SCKPORT )      /**< Data Direction Register for MISO GPIO pin. */
+#define HAL_DDR_MOSI           DDR( MOSIPORT )      /**< Data Direction Register for MISO GPIO pin. */
+#define HAL_DDR_MISO           DDR( MISOPORT )      /**< Data Direction Register for MOSI GPIO pin. */
 #define HAL_DD_SS             SSPIN               /**< Data Direction bit for SS. */
 #define HAL_DD_SCK            SCKPIN              /**< Data Direction bit for SCK. */
 #define HAL_DD_MOSI           MOSIPIN             /**< Data Direction bit for MOSI. */
 #define HAL_DD_MISO           MISOPIN             /**< Data Direction bit for MISO. */
+#endif /* defined(__AVR_ATmega128RFA1__) */
+
 /** \} */
 
 
-#define HAL_SS_HIGH( ) (HAL_PORT_SPI |= ( 1 << HAL_SS_PIN )) /**< MACRO for pulling SS high. */
-#define HAL_SS_LOW( )  (HAL_PORT_SPI &= ~( 1 << HAL_SS_PIN )) /**< MACRO for pulling SS low. */
+#define HAL_SS_HIGH( ) (HAL_PORT_SS |= ( 1 << HAL_SS_PIN )) /**< MACRO for pulling SS high. */
+#define HAL_SS_LOW( )  (HAL_PORT_SS &= ~( 1 << HAL_SS_PIN )) /**< MACRO for pulling SS low. */
 
 /** \brief Macros defined for HAL_TIMER1.
  *
@@ -254,6 +373,7 @@
  *  symbols (16 us ticks).
  */
 
+#if defined(__AVR__)
 #if ( F_CPU == 16000000UL )
     #define HAL_TCCR1B_CONFIG ( ( 1 << ICES1 ) | ( 1 << CS12 ) )
     #define HAL_US_PER_SYMBOL ( 1 )
@@ -290,11 +410,28 @@
 #define HAL_DISABLE_OVERFLOW_INTERRUPT( ) ( TIMSK1 &= ~( 1 << TOIE1 ) )
 
 /** This macro will protect the following code from interrupts.*/
-#define AVR_ENTER_CRITICAL_REGION( ) {uint8_t volatile saved_sreg = SREG; cli( )
+#define HAL_ENTER_CRITICAL_REGION( ) {uint8_t volatile saved_sreg = SREG; cli( )
 
-/** This macro must always be used in conjunction with AVR_ENTER_CRITICAL_REGION
+/** This macro must always be used in conjunction with HAL_ENTER_CRITICAL_REGION
     so that interrupts are enabled again.*/
-#define AVR_LEAVE_CRITICAL_REGION( ) SREG = saved_sreg;}
+#define HAL_LEAVE_CRITICAL_REGION( ) SREG = saved_sreg;}
+
+#else /* MULLE */
+
+#define HAL_ENABLE_RADIO_INTERRUPT( ) ( INT1IC.BYTE |= 1 )
+#define HAL_DISABLE_RADIO_INTERRUPT( ) ( INT1IC.BYTE &= ~(1) )
+
+#define HAL_ENABLE_OVERFLOW_INTERRUPT( ) ( TB4IC.BYTE = 1 )
+#define HAL_DISABLE_OVERFLOW_INTERRUPT( ) ( TB4IC.BYTE = 0 )
+
+/** This macro will protect the following code from interrupts.*/
+#define HAL_ENTER_CRITICAL_REGION( ) MULLE_ENTER_CRITICAL_REGION( )
+
+/** This macro must always be used in conjunction with HAL_ENTER_CRITICAL_REGION
+    so that interrupts are enabled again.*/
+#define HAL_LEAVE_CRITICAL_REGION( ) MULLE_LEAVE_CRITICAL_REGION( )
+
+#endif /* !__AVR__ */
 
 
 /** \brief  Enable the interrupt from the radio transceiver.
@@ -361,15 +498,39 @@ void hal_clear_rx_start_event_handler( void );
 uint8_t hal_get_pll_lock_flag( void );
 void hal_clear_pll_lock_flag( void );
 
+/* Hack for atmega128rfa1 with integrated radio. Access registers directly, not through SPI */
+#if defined(__AVR_ATmega128RFA1__)
+//#define hal_register_read(address) _SFR_MEM8((uint16_t)address)
+#define hal_register_read(address) address
+uint8_t hal_subregister_read( uint16_t address, uint8_t mask, uint8_t position );
+void hal_subregister_write( uint16_t address, uint8_t mask, uint8_t position,
+                            uint8_t value );
+
+//#define hal_register_write(address, value) _SFR_MEM8((uint16_t)address)=value
+#define hal_register_write(address, value) address=value
+//#define hal_subregister_read( address, mask, position ) (_SFR_MEM8((uint16_t)address)&mask)>>position
+//#define hal_subregister_read1( address, mask, position ) (address&mask)>>position
+//#define hal_subregister_write( address, mask, position, value ) address=(address<<position)&mask
+#else
 uint8_t hal_register_read( uint8_t address );
 void hal_register_write( uint8_t address, uint8_t value );
 uint8_t hal_subregister_read( uint8_t address, uint8_t mask, uint8_t position );
 void hal_subregister_write( uint8_t address, uint8_t mask, uint8_t position,
                             uint8_t value );
-void hal_frame_read(hal_rx_frame_t *rx_frame, rx_callback_t rx_callback);
+#endif
+
+
+
+//void hal_frame_read(hal_rx_frame_t *rx_frame, rx_callback_t rx_callback);
+/* For speed RF230BB does not use a callback */
+void hal_frame_read(hal_rx_frame_t *rx_frame);
 void hal_frame_write( uint8_t *write_buffer, uint8_t length );
 void hal_sram_read( uint8_t address, uint8_t length, uint8_t *data );
 void hal_sram_write( uint8_t address, uint8_t length, uint8_t *data );
+/* Number of receive buffers in RAM. */
+#ifndef RF230_CONF_RX_BUFFERS
+#define RF230_CONF_RX_BUFFERS 1
+#endif
 
 #endif
 /** @} */

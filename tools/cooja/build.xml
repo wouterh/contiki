@@ -68,7 +68,8 @@ The COOJA Simulator
 
   <target name="compile" depends="init">
     <mkdir dir="${build}"/>
-    <javac srcdir="${java}" destdir="${build}" debug="on">
+    <javac srcdir="${java}" destdir="${build}" debug="on"
+           includeantruntime="false">
       <classpath>
         <pathelement path="."/>
         <pathelement location="lib/jdom.jar"/>
@@ -91,6 +92,7 @@ The COOJA Simulator
     <ant antfile="build.xml" dir="apps/mspsim" target="clean" inheritAll="false"/>
     <ant antfile="build.xml" dir="apps/avrora" target="clean" inheritAll="false"/>
     <ant antfile="build.xml" dir="apps/serial_socket" target="clean" inheritAll="false"/>
+    <ant antfile="build.xml" dir="apps/collect-view" target="clean" inheritAll="false"/>
   </target>
 
   <target name="run" depends="init, compile, jar, copy configs">
@@ -163,6 +165,7 @@ The COOJA Simulator
     <ant antfile="build.xml" dir="apps/mspsim" target="jar" inheritAll="false"/>
     <ant antfile="build.xml" dir="apps/avrora" target="jar" inheritAll="false"/>
     <ant antfile="build.xml" dir="apps/serial_socket" target="jar" inheritAll="false"/>
+    <ant antfile="build.xml" dir="apps/collect-view" target="jar" inheritAll="false"/>
   </target>
 
   <target name="run_nogui" depends="init, compile, jar, copy configs">
@@ -187,7 +190,7 @@ The COOJA Simulator
   </target>
 
   <target name="java_version" depends="init">
-    <exec executable="javac" dir="${build}">
+    <exec executable="javac" dir="${build}" includeantruntime="false">
       <arg value="-version"/>
     </exec>
   </target>

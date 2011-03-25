@@ -26,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $Id: CompileContiki.java,v 1.6 2010/03/15 11:04:07 fros4943 Exp $
+ * $Id: CompileContiki.java,v 1.8 2010/12/03 15:25:17 fros4943 Exp $
  */
 
 package se.sics.cooja.dialogs;
@@ -43,12 +43,14 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 import javax.swing.Action;
 
 import org.apache.log4j.Logger;
 
 import se.sics.cooja.GUI;
+import se.sics.cooja.MoteType;
 import se.sics.cooja.MoteType.MoteTypeCreationException;
 import se.sics.cooja.contikimote.ContikiMoteType;
 
@@ -85,14 +87,47 @@ public class CompileContiki {
       final MessageList compilationOutput,
       boolean synchronous)
   throws Exception {
+    /* TODO Split into correct arguments: parse " and ' */
+  	return compile(command.split(" "), env, outputFile, directory, onSuccess, onFailure, compilationOutput, synchronous);
+  }
 
-    compilationOutput.addMessage("", MessageList.NORMAL);
-    compilationOutput.addMessage("> " + command, MessageList.NORMAL);
-    logger.info("> " + command);
+  /**
+   * Executes a Contiki compilation command.
+   *
+   * @param command Command
+   * @param env (Optional) Environment. May be null.
+   * @param outputFile Expected output. May be null.
+   * @param directory Directory in which to execute command
+   * @param onSuccess Action called if compilation succeeds
+   * @param onFailure Action called if compilation fails
+   * @param compilationOutput Is written both std and err process output
+   * @param synchronous If true, method blocks until process completes
+   * @return Sub-process if called asynchronously
+   * @throws Exception If process returns error, or outputFile does not exist
+   */
+  public static Process compile(
+      final String command[],
+      final String[] env,
+      final File outputFile,
+      final File directory,
+      final Action onSuccess,
+      final Action onFailure,
+      final MessageList compilationOutput,
+      boolean synchronous)
+  throws Exception {
+
+    {
+      String cmd = "";
+      for (String c: command) {
+      	cmd += c + " ";
+      }
+      logger.info("> " + cmd);
+      compilationOutput.addMessage("", MessageList.NORMAL);
+      compilationOutput.addMessage("> " + cmd, MessageList.NORMAL);
+    }
 
     final Process compileProcess;
     try {
-      /* TODO Split into correct arguments: parse " and ' */
       compileProcess = Runtime.getRuntime().exec(command, env, directory);
 
       final BufferedReader processNormal = new BufferedReader(
@@ -450,6 +485,7 @@ public class CompileContiki {
     env.add(new String[] { "LIBNAME", identifier });
     env.add(new String[] { "CLASSNAME", javaClass });
     env.add(new String[] { "CONTIKI_APP", contikiAppNoExtension });
+    env.add(new String[] { "COOJA_SOURCEDIRS", "" });
     env.add(new String[] { "COOJA_SOURCEFILES", "" });
     env.add(new String[] { "CC", GUI.getExternalToolsSetting("PATH_C_COMPILER") });
     env.add(new String[] { "EXTRA_CC_ARGS", ccFlags });
@@ -463,4 +499,54 @@ public class CompileContiki {
     env.add(new String[] { "PATH", System.getenv("PATH") });
     return env.toArray(new String[0][0]);
   }
+
+	public static void redefineCOOJASources(MoteType moteType, String[][] env) {
+    if (moteType == null || env == null) {
+    	return;
+    }
+
+    /* Check whether cooja projects include additional sources */
+    String[] coojaSources = moteType.getConfig().getStringArrayValue(ContikiMoteType.class, "C_SOURCES");
+    if (coojaSources == null) {
+    	return;
+    }
+
+    String sources = "";
+    String dirs = "";
+    for (String s: coojaSources) {
+    	if (s.trim().isEmpty()) {
+    		continue;
+    	}
+    	File p = moteType.getConfig().getUserProjectDefining(ContikiMoteType.class, "C_SOURCES", s);
+    	if (p == null) {
+    		logger.warn("Project defining C_SOURCES$" + s + " not found");
+    		continue;
+    	}
+    	/* Redefine sources. TODO Move to createCompilationEnvironment. */
+    	sources += s + " ";
+    	dirs += p.getPath() + " ";
+    	
+    	/* XXX Cygwin specific directory style */
+    	if (dirs.contains("C:\\")) {
+    		dirs += p.getPath().replace("C:\\", "/cygdrive/c/") + " ";
+    	}
+    }
+
+    if (!sources.trim().isEmpty()) {
+    	for (int i=0; i < env.length; i++) {
+    		if (env[i][0].equals("COOJA_SOURCEFILES")) {
+    			env[i][1] = sources;
+    			break;
+    		}
+    	}
+    }
+    if (!dirs.trim().isEmpty()) {
+    	for (int i=0; i < env.length; i++) {
+    		if (env[i][0].equals("COOJA_SOURCEDIRS")) {
+    			env[i][1] = dirs.replace("\\", "/");
+    			break;
+    		}
+    	}
+    }
+	}
 }

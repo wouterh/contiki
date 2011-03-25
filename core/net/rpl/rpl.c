@@ -31,8 +31,6 @@
  * SUCH DAMAGE.
  *
  * This file is part of the Contiki operating system.
- *
- * $Id: rpl.c,v 1.13 2010/11/03 15:41:23 adamdunkels Exp $
  */
 /**
  * \file
@@ -44,7 +42,7 @@
 #include "net/uip.h"
 #include "net/tcpip.h"
 #include "net/uip-ds6.h"
-#include "net/rpl/rpl.h"
+#include "net/rpl/rpl-private.h"
 #include "net/neighbor-info.h"
 
 #define DEBUG DEBUG_NONE
@@ -128,13 +126,11 @@ rpl_link_neighbor_callback(const rimeaddr_t *addr, int known, int etx)
   rpl_dag_t *dag;
   rpl_parent_t *parent;
 
-  /*  etx = FIX2ETX(etx); */
-
   uip_ip6addr(&ipaddr, 0xfe80, 0, 0, 0, 0, 0, 0, 0);
   uip_ds6_set_addr_iid(&ipaddr, (uip_lladdr_t *)addr);
   PRINTF("RPL: Neighbor ");
   PRINT6ADDR(&ipaddr);
-  PRINTF(" is %sknown. ETX = %d\n", known ? "" : "no longer ", etx);
+  PRINTF(" is %sknown. ETX = %u\n", known ? "" : "no longer ", NEIGHBOR_INFO_FIX2ETX(etx));
 
   dag = rpl_get_dag(RPL_DEFAULT_INSTANCE);
   if(dag == NULL) {
@@ -152,11 +148,10 @@ rpl_link_neighbor_callback(const rimeaddr_t *addr, int known, int etx)
     return;
   }
 
-  if(etx != parent->local_confidence) {
-    /* Trigger DAG rank recalculation. */
-    parent->updated = 1;
-  }
-  parent->local_confidence = etx;
+  /* Trigger DAG rank recalculation. */
+  parent->updated = 1;
+
+  parent->link_metric = etx;
 
   if(dag->of->parent_state_callback != NULL) {
     dag->of->parent_state_callback(parent, known, etx);
@@ -167,7 +162,6 @@ rpl_link_neighbor_callback(const rimeaddr_t *addr, int known, int etx)
     PRINT6ADDR(&parent->addr);
     PRINTF(" because of bad connectivity (ETX %d)\n", etx);
     parent->rank = INFINITE_RANK;
-    parent->updated = 1;
   }
 }
 /************************************************************************/
@@ -205,10 +199,16 @@ rpl_ipv6_neighbor_callback(uip_ds6_nbr_t *nbr)
 void
 rpl_init(void)
 {
+  uip_ipaddr_t rplmaddr;
   PRINTF("RPL started\n");
 
   rpl_reset_periodic_timer();
   neighbor_info_subscribe(rpl_link_neighbor_callback);
+
+  /* add rpl multicast address */
+  uip_create_linklocal_rplnodes_mcast(&rplmaddr);
+  uip_ds6_maddr_add(&rplmaddr);
+
 #if RPL_CONF_STATS
   memset(&rpl_stats, 0, sizeof(rpl_stats));
 #endif
