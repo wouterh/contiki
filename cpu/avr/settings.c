@@ -79,9 +79,6 @@
 #include <avr/pgmspace.h>
 #include <avr/eeprom.h>
 #include <avr/wdt.h>
-#else
-#define AVR_ENTER_CRITICAL_REGION()
-#define AVR_LEAVE_CRITICAL_REGION()
 #endif
 
 #ifndef MIN
@@ -121,24 +118,28 @@ settings_iter_begin() {
 settings_iter_t
 settings_iter_next(settings_iter_t ret) {
     if(ret) {
-        ret = settings_iter_get_value_addr(ret)-1;
+        // A settings iterator always points to the first byte
+        // after the actual key-value pair in memory. This means that
+        // the address of our value in EEPROM just happens
+        // to be the address of our next iterator.
+        ret = settings_iter_get_value_addr(ret);
         return settings_iter_is_valid(ret)?ret:0;
     }
     return SETTINGS_INVALID_ITER;
 }
 
 bool
-settings_iter_is_valid(settings_iter_t item_addr) {
+settings_iter_is_valid(settings_iter_t iter) {
 	item_header_t header = {};
 
-	if(item_addr==EEPROM_NULL)
+	if(iter==EEPROM_NULL)
 		return false;
 
-	if((SETTINGS_TOP_ADDR-item_addr)>=SETTINGS_MAX_SIZE-3)
+	if((SETTINGS_TOP_ADDR-iter)>=SETTINGS_MAX_SIZE-3)
 		return false;
 	
 	eeprom_read(
-		item_addr+1-sizeof(header),
+		iter-sizeof(header),
 		(unsigned char*)&header,
 		sizeof(header)
 	);
@@ -152,11 +153,11 @@ settings_iter_is_valid(settings_iter_t item_addr) {
 }
 
 settings_key_t
-settings_iter_get_key(settings_iter_t item_addr) {
+settings_iter_get_key(settings_iter_t iter) {
 	item_header_t header;
 	
 	eeprom_read(
-		item_addr+1-sizeof(header),
+		iter-sizeof(header),
 		(unsigned char*)&header,
 		sizeof(header)
 	);
@@ -168,12 +169,12 @@ settings_iter_get_key(settings_iter_t item_addr) {
 }
 
 settings_length_t
-settings_iter_get_value_length(settings_iter_t item_addr) {
+settings_iter_get_value_length(settings_iter_t iter) {
 	item_header_t header;
 	settings_length_t ret = 0;
 	
 	eeprom_read(
-		item_addr+1-sizeof(header),
+		iter-sizeof(header),
 		(unsigned char*)&header,
 		sizeof(header)
 	);
@@ -192,16 +193,52 @@ bail:
 }
 
 eeprom_addr_t
-settings_iter_get_value_addr(settings_iter_t item_addr) {
-	settings_length_t len = settings_iter_get_value_length(item_addr);
+settings_iter_get_value_addr(settings_iter_t iter) {
+	settings_length_t len = settings_iter_get_value_length(iter);
 	
-	return item_addr+1-sizeof(item_header_t)-len + (len>128);
+	return iter-sizeof(item_header_t)-len + (len>128);
 }
 
-void
-settings_iter_get_value_bytes(settings_iter_t item_addr, void* bytes) {
-    // TODO: Writeme!
-    return 0;
+settings_length_t
+settings_iter_get_value_bytes(settings_iter_t iter, void* bytes, settings_length_t max_length) {
+    max_length = MIN(max_length,settings_iter_get_value_length(iter));
+
+    eeprom_read(
+        settings_iter_get_value_addr(iter),
+        bytes,
+        max_length
+    );
+
+    return max_length;
+}
+
+settings_status_t
+settings_iter_delete(settings_iter_t iter) {
+    settings_status_t ret = SETTINGS_STATUS_FAILURE;
+    settings_iter_t next = settings_iter_next(iter);
+    
+    if(!next) {
+        // Special case: we are the last item. we can get away with
+        // just wiping out our own header.
+        item_header_t header;
+
+        memset(&header,0xFF,sizeof(header));
+
+        eeprom_write(
+            iter-sizeof(header),
+            (unsigned char*)&header,
+            sizeof(header)
+        );
+        
+        ret = SETTINGS_STATUS_OK;        
+    }
+    
+	// This case requires the settings store to be shifted.
+    // Currently unimplemented.
+	// TODO: Writeme!
+    ret = SETTINGS_STATUS_UNIMPLEMENTED;
+    
+	return ret;
 }
 
 #pragma mark - Public Functions
@@ -209,10 +246,10 @@ settings_iter_get_value_bytes(settings_iter_t item_addr, void* bytes) {
 bool
 settings_check(settings_key_t key,uint8_t index) {
 	bool ret = false;
-	settings_iter_t current_item = SETTINGS_TOP_ADDR;
+	settings_iter_t iter;
 
-	for(current_item=SETTINGS_TOP_ADDR;settings_iter_is_valid(current_item);current_item=settings_iter_next(current_item)) {
-		if(settings_iter_get_key(current_item)==key) {
+	for(iter=settings_iter_begin();iter;iter=settings_iter_next(iter)) {
+		if(settings_iter_get_key(iter)==key) {
 			if(!index) {
 				ret = true;
 				break;
@@ -229,18 +266,13 @@ settings_check(settings_key_t key,uint8_t index) {
 settings_status_t
 settings_get(settings_key_t key,uint8_t index,unsigned char* value,settings_length_t* value_size) {
 	settings_status_t ret = SETTINGS_STATUS_NOT_FOUND;
-	settings_iter_t current_item = SETTINGS_TOP_ADDR;
+	settings_iter_t iter;
 	
-	for(current_item=settings_iter_begin();current_item;current_item=settings_iter_next(current_item)) {
-		if(settings_iter_get_key(current_item)==key) {
+	for(iter=settings_iter_begin();iter;iter=settings_iter_next(iter)) {
+		if(settings_iter_get_key(iter)==key) {
 			if(!index) {
 				// We found it!
-				*value_size = MIN(*value_size,settings_iter_get_value_length(current_item));
-				eeprom_read(
-					settings_iter_get_value_addr(current_item),
-					value,
-					*value_size
-				);
+                *value_size = settings_iter_get_value_bytes(iter,(void*)value,*value_size);
 				ret = SETTINGS_STATUS_OK;
 				break;
 			} else {
@@ -256,13 +288,13 @@ settings_get(settings_key_t key,uint8_t index,unsigned char* value,settings_leng
 settings_status_t
 settings_add(settings_key_t key,const unsigned char* value,settings_length_t value_size) {
 	settings_status_t ret = SETTINGS_STATUS_FAILURE;
-	settings_iter_t current_item = SETTINGS_TOP_ADDR;
+	settings_iter_t iter;
 	item_header_t header;
 	
 	// Find end of list
-	for(current_item=settings_iter_begin();current_item;current_item=settings_iter_next(current_item)) { }
+	for(iter=settings_iter_begin();iter;iter=settings_iter_next(iter)) { }
 	
-	if(current_item==EEPROM_NULL)
+	if(iter==SETTINGS_INVALID_ITER)
 		goto bail;
 
 	// TODO: size check!
@@ -292,23 +324,35 @@ settings_add(settings_key_t key,const unsigned char* value,settings_length_t val
 
 	// Write the header first
 	eeprom_write(
-		current_item+1-sizeof(header),
+		iter-sizeof(header),
 		(unsigned char*)&header,
 		sizeof(header)
 	);
 	
 	// Sanity check, remove once confident
-	if(settings_iter_get_value_length(current_item)!=value_size) {
+	if(settings_iter_get_value_length(iter)!=value_size) {
 		goto bail;
 	}
-	
+
 	// Now write the data
 	eeprom_write(
-		settings_iter_get_value_addr(current_item),
+		settings_iter_get_value_addr(iter),
 		(unsigned char*)value,
 		value_size
 	);
-	
+    
+    // This should be the last item. If this is not the case,
+    // then we need to clear out the phantom setting.
+    if((iter = settings_iter_next(iter))) {
+        memset(&header,0xFF,sizeof(header));
+
+        eeprom_write(
+            iter-sizeof(header),
+            (unsigned char*)&header,
+            sizeof(header)
+        );
+    }
+    
 	ret = SETTINGS_STATUS_OK;
 	
 bail:
@@ -318,20 +362,20 @@ bail:
 settings_status_t
 settings_set(settings_key_t key,const unsigned char* value,settings_length_t value_size) {
 	settings_status_t ret = SETTINGS_STATUS_FAILURE;
-	settings_iter_t current_item = SETTINGS_TOP_ADDR;
+	settings_iter_t iter;
 
-	for(current_item=settings_iter_begin();current_item;current_item=settings_iter_next(current_item)) {
-		if(settings_iter_get_key(current_item)==key) {
+	for(iter=settings_iter_begin();iter;iter=settings_iter_next(iter)) {
+		if(settings_iter_get_key(iter)==key) {
 			break;
 		}
 	}
 
-	if((current_item==EEPROM_NULL) || !settings_iter_is_valid(current_item)) {
+	if((iter==EEPROM_NULL) || !settings_iter_is_valid(iter)) {
 		ret = settings_add(key,value,value_size);
 		goto bail;
 	}
 	
-	if(value_size!=settings_iter_get_value_length(current_item)) {
+	if(value_size!=settings_iter_get_value_length(iter)) {
 		// Requires the settings store to be shifted. Currently unimplemented.
 		ret = SETTINGS_STATUS_UNIMPLEMENTED;
 		goto bail;
@@ -339,7 +383,7 @@ settings_set(settings_key_t key,const unsigned char* value,settings_length_t val
 	
 	// Now write the data
 	eeprom_write(
-		settings_iter_get_value_addr(current_item),
+		settings_iter_get_value_addr(iter),
 		(unsigned char*)value,
 		value_size
 	);
@@ -352,14 +396,29 @@ bail:
 
 settings_status_t
 settings_delete(settings_key_t key,uint8_t index) {
-	// Requires the settings store to be shifted. Currently unimplemented.
-	// TODO: Writeme!
-	return SETTINGS_STATUS_UNIMPLEMENTED;
+	settings_status_t ret = SETTINGS_STATUS_NOT_FOUND;
+	settings_iter_t iter;
+	
+	for(iter=settings_iter_begin();iter;iter=settings_iter_next(iter)) {
+		if(settings_iter_get_key(iter)==key) {
+			if(!index) {
+				// We found it!
+                ret = settings_iter_delete(iter);
+				break;
+			} else {
+				// Nope, keep looking
+				index--;
+			}
+		}
+	}
+    
+    return ret;
 }
 
 
 void
 settings_wipe(void) {
+#if __AVR__
 	settings_length_t i = SETTINGS_TOP_ADDR-SETTINGS_MAX_SIZE;
 	AVR_ENTER_CRITICAL_REGION();
 	for(;i<=SETTINGS_TOP_ADDR;i++) {
@@ -367,6 +426,43 @@ settings_wipe(void) {
 		wdt_reset();
 	}
 	AVR_LEAVE_CRITICAL_REGION();
+#endif
 }
 
-
+void
+settings_debug_dump(FILE* file) {
+	settings_iter_t iter;
+    fputs("{\n",file);
+	for(iter=settings_iter_begin();iter;iter=settings_iter_next(iter)) {
+        {
+            union {
+                settings_key_t key;
+                char bytes[0];
+            } u;
+            u.key = settings_iter_get_key(iter);
+            
+            fputs("\t\"",file);
+            fputc(u.bytes[0],file);
+            fputc(u.bytes[1],file);
+            fputs("\" = <",file);
+        }
+        {
+            settings_length_t len = settings_iter_get_value_length(iter);
+            eeprom_addr_t addr = settings_iter_get_value_addr(addr);
+            unsigned char byte;
+            for(;len;len--,addr++) {
+                eeprom_read(
+                    addr,
+                    &byte,
+                    1
+                );
+                // TODO: Figure out a way to do this without fprintf.
+                fprintf(file,"%02X",byte);
+                if(len!=1)
+                    fputc(' ',file);
+            }
+        }
+        fputs(">;\n",file);
+    }
+    fputs("}\n",file);
+}

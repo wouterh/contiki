@@ -3,6 +3,7 @@
 
 #include <inttypes.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include "dev/eeprom.h"
 
@@ -45,7 +46,7 @@ typedef uint16_t settings_length_t;
 // Use this when you want to retrieve the last item
 #define SETTINGS_LAST_INDEX		(0xFF)
 
-#define SETTINGS_INVALID_KEY	(0x0000)
+#define SETTINGS_INVALID_KEY	(0xFFFF)
 
 #define SETTINGS_INVALID_ITER	(EEPROM_NULL)
 
@@ -61,25 +62,27 @@ extern void settings_wipe(void);
 extern settings_status_t settings_set(settings_key_t key,const unsigned char* value,settings_length_t value_size);
 extern settings_status_t settings_delete(settings_key_t key,uint8_t index);
 
+extern void settings_debug_dump(FILE* file);
+
 #pragma mark - Settings traversal functions
 
 /*!	Will return extern SETTINGS_INVALID_ITER if at the end of settings list */
 extern settings_iter_t settings_iter_begin();
 
 /*!	Will return extern SETTINGS_INVALID_ITER if at the end of settings list */
-extern settings_iter_t settings_iter_next(settings_iter_t item_addr);
+extern settings_iter_t settings_iter_next(settings_iter_t iter);
 
-extern bool settings_iter_is_valid(settings_iter_t item_addr);
+extern bool settings_iter_is_valid(settings_iter_t iter);
 
-extern settings_key_t settings_iter_get_key(settings_iter_t item_addr);
+extern settings_key_t settings_iter_get_key(settings_iter_t iter);
 
-extern settings_length_t settings_iter_get_value_length(settings_iter_t item_addr);
+extern settings_length_t settings_iter_get_value_length(settings_iter_t iter);
 
-extern eeprom_addr_t settings_iter_get_value_addr(settings_iter_t item_addr);
+extern eeprom_addr_t settings_iter_get_value_addr(settings_iter_t iter);
 
-// Not yet implemented.
-//extern void settings_iter_get_value_bytes(settings_iter_t item_addr, void* bytes);
-//extern void settings_iter_delete(settings_iter_t item);
+extern settings_length_t settings_iter_get_value_bytes(settings_iter_t item, void* bytes, settings_length_t max_length);
+
+extern settings_status_t settings_iter_delete(settings_iter_t item);
 
 #pragma mark - Inline convenience functions
 
