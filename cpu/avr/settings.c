@@ -1,20 +1,96 @@
+/*! @file settings.c
+**  Settings Manager
+**  @author Robert Quattlebaum <darco@deepdarc.com>
+**
+**  Format based on OLPC manufacturing data, as described here:
+**  <http://wiki.laptop.org/go/Manufacturing_data>
+**
+**  @par Features
+**
+**      - Robust data format which requires no initialization.
+**      - Supports multiple values with the same key.
+**      - Data can be appended without erasing EEPROM.
+**      - Max size of settings data can be easily increased in the future,
+**        as long as it doesn't overlap with application data.
+**
+**  @par Data Format
+**  
+**  Since the beginning of EEPROM often contains application-specific
+**  information, the best place to store settings is at the end of
+**  EEPROM. Because we are starting at the end of EEPROM, it makes sense
+**  to grow the list of key-value pairs downward, toward the start of
+**  EEPROM. 
+**
+**  Each key-value pair is stored in memory in the following format:
+** <table>
+**  <thead>
+**   <td>Order</td>
+**   <td>Size<small> (in bytes)</small></td>
+**   <td>Name</td>
+**   <td>Description</td>
+**  </thead>
+**  <tr>
+**   <td>0</td>
+**   <td>2</td>
+**   <td>key</td>
+**   <td></td>
+**  </tr>
+**  <tr>
+**   <td>-2</td>
+**   <td>1</td>
+**   <td>size_check</td>
+**   <td>One's-complement of next byte</td>
+**  </tr>
+**  <tr>
+**   <td>-3</td>
+**   <td>1 or 2</td>
+**   <td>size</td>
+**   <td>The size of the value, in bytes.</td>
+**  </tr>
+**  <tr>
+**   <td>-4 or -5</td>
+**   <td>variable</td>
+**   <td>value</td>
+**  </tr>
+** </table>
+**
+**  The end of the key-value pairs is denoted by the first invalid entry.
+**  An invalid entry has any of the following attributes:
+**      - The size_check byte doesn't match the one's compliment
+**        of the size byte (or size_low byte).
+**      - The key has a value of 0x0000.
+**
+**  Note that we actually aren't starting at the very end of EEPROM, instead
+**  we are starting 4 bytes from the end of EEPROM. This allows for things like
+**  AVRDUDE's erase counter, and possibly bootloader flags.
+**  
+*/
 
 #include <stdbool.h>
 #include <avr/io.h>
 #include "settings.h"
+
+#include "contiki.h"
 #include "dev/eeprom.h"
+
 #include <stdio.h>
+
+#if __AVR__
 #include <avr/pgmspace.h>
 #include <avr/eeprom.h>
 #include <avr/wdt.h>
-#include "contiki.h"
+#else
+#define AVR_ENTER_CRITICAL_REGION()
+#define AVR_LEAVE_CRITICAL_REGION()
+#endif
 
 #ifndef MIN
 #define MIN(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 #endif
 
 #ifndef SETTINGS_TOP_ADDR
-#define SETTINGS_TOP_ADDR	(E2END-4)	//!< Defaults to end of EEPROM, minus 4 bytes for avrdude erase count
+//! Defaults to end of EEPROM, minus 4 bytes for avrdude erase count
+#define SETTINGS_TOP_ADDR	(settings_iter_t)(E2END-4)	
 #endif
 
 #ifndef SETTINGS_MAX_SIZE
@@ -28,9 +104,6 @@
     so that interrupts are enabled again.*/
 #define AVR_LEAVE_CRITICAL_REGION( ) SREG = saved_sreg;}
 
-//#pragma mark -
-//#pragma mark Private Functions
-
 typedef struct {
 	uint8_t size_extra;
 	uint8_t size_low;
@@ -38,15 +111,31 @@ typedef struct {
 	settings_key_t key;
 } item_header_t;
 
-inline static bool
-settings_is_item_valid_(eeprom_addr_t item_addr) {
+#pragma mark - Public Travesal Functions
+
+settings_iter_t
+settings_iter_begin() {
+	return settings_iter_is_valid(SETTINGS_TOP_ADDR)?SETTINGS_TOP_ADDR:0;
+}
+
+settings_iter_t
+settings_iter_next(settings_iter_t ret) {
+    if(ret) {
+        ret = settings_iter_get_value_addr(ret)-1;
+        return settings_iter_is_valid(ret)?ret:0;
+    }
+    return SETTINGS_INVALID_ITER;
+}
+
+bool
+settings_iter_is_valid(settings_iter_t item_addr) {
 	item_header_t header = {};
 
 	if(item_addr==EEPROM_NULL)
 		return false;
 
-//	if((SETTINGS_TOP_ADDR-item_addr)>=SETTINGS_MAX_SIZE-3)
-//		return false;
+	if((SETTINGS_TOP_ADDR-item_addr)>=SETTINGS_MAX_SIZE-3)
+		return false;
 	
 	eeprom_read(
 		item_addr+1-sizeof(header),
@@ -62,8 +151,8 @@ settings_is_item_valid_(eeprom_addr_t item_addr) {
 	return true;
 }
 
-inline static settings_key_t
-settings_get_key_(eeprom_addr_t item_addr) {
+settings_key_t
+settings_iter_get_key(settings_iter_t item_addr) {
 	item_header_t header;
 	
 	eeprom_read(
@@ -78,10 +167,10 @@ settings_get_key_(eeprom_addr_t item_addr) {
 	return header.key;
 }
 
-inline static size_t
-settings_get_value_length_(eeprom_addr_t item_addr) {
+settings_length_t
+settings_iter_get_value_length(settings_iter_t item_addr) {
 	item_header_t header;
-	size_t ret = 0;
+	settings_length_t ret = 0;
 	
 	eeprom_read(
 		item_addr+1-sizeof(header),
@@ -102,32 +191,28 @@ bail:
 	return ret;
 }
 
-inline static eeprom_addr_t
-settings_get_value_addr_(eeprom_addr_t item_addr) {
-	size_t len = settings_get_value_length_(item_addr);
+eeprom_addr_t
+settings_iter_get_value_addr(settings_iter_t item_addr) {
+	settings_length_t len = settings_iter_get_value_length(item_addr);
 	
-	if(len>128)
-		return item_addr+1-sizeof(item_header_t)-len;
-
-	return item_addr+1-sizeof(item_header_t)+1-len;
+	return item_addr+1-sizeof(item_header_t)-len + (len>128);
 }
 
-inline static eeprom_addr_t
-settings_next_item_(eeprom_addr_t item_addr) {
-	return settings_get_value_addr_(item_addr)-1;
+void
+settings_iter_get_value_bytes(settings_iter_t item_addr, void* bytes) {
+    // TODO: Writeme!
+    return 0;
 }
 
-
-//#pragma mark -
-//#pragma mark Public Functions
+#pragma mark - Public Functions
 
 bool
 settings_check(settings_key_t key,uint8_t index) {
 	bool ret = false;
-	eeprom_addr_t current_item = SETTINGS_TOP_ADDR;
+	settings_iter_t current_item = SETTINGS_TOP_ADDR;
 
-	for(current_item=SETTINGS_TOP_ADDR;settings_is_item_valid_(current_item);current_item=settings_next_item_(current_item)) {
-		if(settings_get_key_(current_item)==key) {
+	for(current_item=SETTINGS_TOP_ADDR;settings_iter_is_valid(current_item);current_item=settings_iter_next(current_item)) {
+		if(settings_iter_get_key(current_item)==key) {
 			if(!index) {
 				ret = true;
 				break;
@@ -142,17 +227,17 @@ settings_check(settings_key_t key,uint8_t index) {
 }
 
 settings_status_t
-settings_get(settings_key_t key,uint8_t index,unsigned char* value,size_t* value_size) {
+settings_get(settings_key_t key,uint8_t index,unsigned char* value,settings_length_t* value_size) {
 	settings_status_t ret = SETTINGS_STATUS_NOT_FOUND;
-	eeprom_addr_t current_item = SETTINGS_TOP_ADDR;
+	settings_iter_t current_item = SETTINGS_TOP_ADDR;
 	
-	for(current_item=SETTINGS_TOP_ADDR;settings_is_item_valid_(current_item);current_item=settings_next_item_(current_item)) {
-		if(settings_get_key_(current_item)==key) {
+	for(current_item=settings_iter_begin();current_item;current_item=settings_iter_next(current_item)) {
+		if(settings_iter_get_key(current_item)==key) {
 			if(!index) {
 				// We found it!
-				*value_size = MIN(*value_size,settings_get_value_length_(current_item));
+				*value_size = MIN(*value_size,settings_iter_get_value_length(current_item));
 				eeprom_read(
-					settings_get_value_addr_(current_item),
+					settings_iter_get_value_addr(current_item),
 					value,
 					*value_size
 				);
@@ -169,13 +254,13 @@ settings_get(settings_key_t key,uint8_t index,unsigned char* value,size_t* value
 }
 
 settings_status_t
-settings_add(settings_key_t key,const unsigned char* value,size_t value_size) {
+settings_add(settings_key_t key,const unsigned char* value,settings_length_t value_size) {
 	settings_status_t ret = SETTINGS_STATUS_FAILURE;
-	eeprom_addr_t current_item = SETTINGS_TOP_ADDR;
+	settings_iter_t current_item = SETTINGS_TOP_ADDR;
 	item_header_t header;
 	
 	// Find end of list
-	for(current_item=SETTINGS_TOP_ADDR;settings_is_item_valid_(current_item);current_item=settings_next_item_(current_item));
+	for(current_item=settings_iter_begin();current_item;current_item=settings_iter_next(current_item)) { }
 	
 	if(current_item==EEPROM_NULL)
 		goto bail;
@@ -213,13 +298,13 @@ settings_add(settings_key_t key,const unsigned char* value,size_t value_size) {
 	);
 	
 	// Sanity check, remove once confident
-	if(settings_get_value_length_(current_item)!=value_size) {
+	if(settings_iter_get_value_length(current_item)!=value_size) {
 		goto bail;
 	}
 	
 	// Now write the data
 	eeprom_write(
-		settings_get_value_addr_(current_item),
+		settings_iter_get_value_addr(current_item),
 		(unsigned char*)value,
 		value_size
 	);
@@ -231,22 +316,22 @@ bail:
 }
 
 settings_status_t
-settings_set(settings_key_t key,const unsigned char* value,size_t value_size) {
+settings_set(settings_key_t key,const unsigned char* value,settings_length_t value_size) {
 	settings_status_t ret = SETTINGS_STATUS_FAILURE;
-	eeprom_addr_t current_item = SETTINGS_TOP_ADDR;
+	settings_iter_t current_item = SETTINGS_TOP_ADDR;
 
-	for(current_item=SETTINGS_TOP_ADDR;settings_is_item_valid_(current_item);current_item=settings_next_item_(current_item)) {
-		if(settings_get_key_(current_item)==key) {
+	for(current_item=settings_iter_begin();current_item;current_item=settings_iter_next(current_item)) {
+		if(settings_iter_get_key(current_item)==key) {
 			break;
 		}
 	}
 
-	if((current_item==EEPROM_NULL) || !settings_is_item_valid_(current_item)) {
+	if((current_item==EEPROM_NULL) || !settings_iter_is_valid(current_item)) {
 		ret = settings_add(key,value,value_size);
 		goto bail;
 	}
 	
-	if(value_size!=settings_get_value_length_(current_item)) {
+	if(value_size!=settings_iter_get_value_length(current_item)) {
 		// Requires the settings store to be shifted. Currently unimplemented.
 		ret = SETTINGS_STATUS_UNIMPLEMENTED;
 		goto bail;
@@ -254,7 +339,7 @@ settings_set(settings_key_t key,const unsigned char* value,size_t value_size) {
 	
 	// Now write the data
 	eeprom_write(
-		settings_get_value_addr_(current_item),
+		settings_iter_get_value_addr(current_item),
 		(unsigned char*)value,
 		value_size
 	);
@@ -275,7 +360,7 @@ settings_delete(settings_key_t key,uint8_t index) {
 
 void
 settings_wipe(void) {
-	size_t i = SETTINGS_TOP_ADDR-SETTINGS_MAX_SIZE;
+	settings_length_t i = SETTINGS_TOP_ADDR-SETTINGS_MAX_SIZE;
 	AVR_ENTER_CRITICAL_REGION();
 	for(;i<=SETTINGS_TOP_ADDR;i++) {
 		eeprom_write_byte((uint8_t*)i,0xFF);
