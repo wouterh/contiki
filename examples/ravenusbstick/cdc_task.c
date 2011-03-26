@@ -508,12 +508,13 @@ void menu_process(char c)
 				break;
 
 #if JACKDAW_CONF_USE_SETTINGS
-			case 'S':
+			case '$':
 				settings_debug_dump(stdout);
 				break;
 			case '*':
+				PRINTF_P(PSTR("Wiping all settings. . .\n\r"));
 				settings_wipe();
-				PRINTF_P(PSTR("All settings wiped.\n\r"));
+				PRINTF_P(PSTR("Done.\n\r"));
 				break;
 #endif // #if JACKDAW_CONF_USE_SETTINGS
 
