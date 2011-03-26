@@ -507,6 +507,16 @@ void menu_process(char c)
 				
 				break;
 
+#if JACKDAW_CONF_USE_SETTINGS
+			case 'S':
+				settings_debug_dump(stdout);
+				break;
+			case '*':
+				settings_wipe();
+				PRINTF_P(PSTR("All settings wiped.\n\r"));
+				break;
+#endif // #if JACKDAW_CONF_USE_SETTINGS
+
 			case 'r':
 				if (usbstick_mode.raw) {
 					PRINTF_P(PSTR("Jackdaw does not capture raw frames\n\r"));
