@@ -26,20 +26,23 @@ typedef uint16_t settings_length_t;
 
 #pragma mark - Settings Keys
 
-#define SETTINGS_KEY_EUI64			'E8'	//!< Value always 8 bytes long
-#define SETTINGS_KEY_EUI48			'E6'	//!< Value always 8 bytes long
-#define SETTINGS_KEY_CHANNEL		'CH'	//!< Value always 1 byte long
-#define SETTINGS_KEY_TXPOWER		'TP'	//!< Value always 1 byte long
-#define SETTINGS_KEY_PAN_ID			'PN'	//!< Value always 2 bytes long
-#define SETTINGS_KEY_PAN_ADDR		'PA'	//!< Value always 2 bytes long
-#define SETTINGS_KEY_AES128KEY		'SK'	//!< Value always 16 bytes long
-#define SETTINGS_KEY_AES128ENABLED	'SE'	//!< Value always 16 bytes long
-#define SETTINGS_KEY_HOSTNAME		'HN'	//!< Variable Length
-#define SETTINGS_KEY_DOMAINNAME		'DN'	//!< Variable Length
+// Two-character constant
+#define TCC(a,b)	((a)+(b)*256)
+
+#define SETTINGS_KEY_EUI64			TCC('E','8')	//!< Value always 8 bytes long
+#define SETTINGS_KEY_EUI48			TCC('E','6')	//!< Value always 8 bytes long
+#define SETTINGS_KEY_CHANNEL		TCC('C','H')	//!< Value always 1 byte long
+#define SETTINGS_KEY_TXPOWER		TCC('T','P')	//!< Value always 1 byte long
+#define SETTINGS_KEY_PAN_ID			TCC('P','N')	//!< Value always 2 bytes long
+#define SETTINGS_KEY_PAN_ADDR		TCC('P','A')	//!< Value always 2 bytes long
+#define SETTINGS_KEY_AES128KEY		TCC('S','K')	//!< Value always 16 bytes long
+#define SETTINGS_KEY_AES128ENABLED	TCC('S','E')	//!< Value always 16 bytes long
+#define SETTINGS_KEY_HOSTNAME		TCC('H','N')	//!< Variable Length
+#define SETTINGS_KEY_DOMAINNAME		TCC('D','N')	//!< Variable Length
 
 #pragma mark - Experimental Settings Keys
 
-#define SETTINGS_KEY_RDC_INDEX		'RD'	//!< Always 1 byte long
+#define SETTINGS_KEY_RDC_INDEX		TCC('R','D')	//!< Always 1 byte long
 
 #pragma mark - Constants
 

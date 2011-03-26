@@ -291,12 +291,12 @@ settings_add(settings_key_t key,const unsigned char* value,settings_length_t val
 	settings_iter_t iter;
 	item_header_t header;
 	
-	// Find end of list
-	for(iter=settings_iter_begin();iter;iter=settings_iter_next(iter)) { }
+	// Find the last item.
+	for(iter=settings_iter_begin();settings_iter_next(iter);iter=settings_iter_next(iter)) { }
 	
-	if(iter==SETTINGS_INVALID_ITER)
-		goto bail;
-
+	// Value address of item is the same as the iterator for next item.
+	iter = settings_iter_get_value_addr(iter);
+	
 	// TODO: size check!
 
 	header.key = key;
@@ -448,7 +448,7 @@ settings_debug_dump(FILE* file) {
         }
         {
             settings_length_t len = settings_iter_get_value_length(iter);
-            eeprom_addr_t addr = settings_iter_get_value_addr(addr);
+            eeprom_addr_t addr = settings_iter_get_value_addr(iter);
             unsigned char byte;
             for(;len;len--,addr++) {
                 eeprom_read(
