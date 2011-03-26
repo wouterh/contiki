@@ -273,8 +273,9 @@ void menu_process(char c)
 					} else {
 						rf230_set_channel(tempchannel);
 #if JACKDAW_CONF_USE_SETTINGS
-						if(settings_set_uint8(SETTINGS_KEY_CHANNEL, tempchannel)!=SETTINGS_STATUS_OK) {
-							PRINTF_P(PSTR("\n\rChannel changed to %d, but unable to store in EEPROM!\n\r"),tempchannel);
+						settings_status_t status = settings_set_uint8(SETTINGS_KEY_CHANNEL, tempchannel);
+						if(status!=SETTINGS_STATUS_OK) {
+							PRINTF_P(PSTR("\n\rChannel changed to %d, but unable to store in EEPROM! (err=%d)\n\r"),tempchannel,status);
 						} else
 #else						
 						AVR_ENTER_CRITICAL_REGION();
@@ -389,6 +390,16 @@ void menu_process(char c)
 				}	
 				
 				break;
+
+#if JACKDAW_CONF_USE_SETTINGS
+			case 'S':
+				settings_debug_dump(stdout);
+				break;
+			case '*':
+				settings_wipe();
+				PRINTF_P(PSTR("All settings wiped.\n\r"));
+				break;
+#endif // #if JACKDAW_CONF_USE_SETTINGS
 
 			case 'r':
 				if (usbstick_mode.raw) {
