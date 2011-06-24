@@ -233,8 +233,8 @@ cdc_ecm_process(void) {
 			Usb_ack_receive_out();
 
 			//Wait for new data
-			if(usb_endpoint_wait_for_read_enabled()!=0) {
-				USB_ETH_HOOK_RX_ERROR("Timeout: read enabled");
+			if(usb_endpoint_wait_for_receive_out()!=0) {
+				USB_ETH_HOOK_RX_ERROR("Timeout: receive out");
 				goto bail;
 			}
 		}
