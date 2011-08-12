@@ -546,6 +546,14 @@ uint16_t p=(uint16_t)&__bss_end;
 
   process_start(&status_leds_process, NULL);
   
+  /* Autostart other processes */
+  /* There are none in the default build so autostart_processes will be unresolved in the link. */
+  /* The AUTOSTART_PROCESSES macro which defines it can only be used in the .co module. */
+  /* See /examples/ravenusbstick/ravenusb.c for an autostart template. */
+#if 0
+  autostart_start(autostart_processes);
+#endif
+
 #if ANNOUNCE
 #if USB_CONF_RS232
   PRINTA("Online.\n");

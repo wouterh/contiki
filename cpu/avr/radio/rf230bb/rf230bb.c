@@ -139,7 +139,7 @@ struct timestamp {
 #endif
 
 /* See clock.c and httpd-cgi.c for RADIOSTATS code */
-#if WEBSERVER
+#if AVR_WEBSERVER
 #define RADIOSTATS 1
 #endif
 #if RADIOSTATS
@@ -563,7 +563,7 @@ set_txpower(uint8_t power)
 void
 calibrate_rc_osc_32k(void)
 {
-#if 1
+#if 0
 
     /* Calibrate RC Oscillator: The calibration routine is done by clocking TIMER2
      * from the external 32kHz crystal while running an internal timer simultaneously.
@@ -739,14 +739,20 @@ void rf230_warm_reset(void) {
 
   /* CCA energy threshold = -91dB + 2*SR_CCA_ED_THRESH. Reset defaults to -77dB */
   /* Use RF230 base of -91;  RF231 base is -90 according to datasheet */
+#ifdef RF230_CONF_CCA_THRES
 #if RF230_CONF_CCA_THRES < -91
+#warning
 #warning RF230_CONF_CCA_THRES below hardware limit, setting to -91dBm
+#warning
   hal_subregister_write(SR_CCA_ED_THRES,0);  
 #elif RF230_CONF_CCA_THRES > -61
+#warning
 #warning RF230_CONF_CCA_THRES above hardware limit, setting to -61dBm
+#warning
   hal_subregister_write(SR_CCA_ED_THRES,15);  
 #else
   hal_subregister_write(SR_CCA_ED_THRES,(RF230_CONF_CCA_THRES+91)/2);  
+#endif
 #endif
 
   /* Use automatic CRC unless manual is specified */
@@ -1483,8 +1489,8 @@ rf230_get_raw_rssi(void)
 static int
 rf230_cca(void)
 {
-  int cca;
-  int radio_was_off = 0;
+  uint8_t cca=0;
+  uint8_t radio_was_off = 0;
 
   /* If the radio is locked by an underlying thread (because we are
      being invoked through an interrupt), we preted that the coast is
@@ -1505,16 +1511,18 @@ rf230_cca(void)
 //hal_subregister_write(SR_CCA_MODE,1);
 
   /* Start the CCA, wait till done, return result */
+  /* Note reading the TRX_STATUS register clears both CCA_STATUS and CCA_DONE bits */
   hal_subregister_write(SR_CCA_REQUEST,1);
   delay_us(TIME_CCA);
-//while ((hal_register_read(RG_TRX_STATUS) & 0x80) == 0 ) {continue;}
-  while (!hal_subregister_read(SR_CCA_DONE)) {continue;}
-  cca=hal_subregister_read(SR_CCA_STATUS);
+  while ((cca & 0x80) == 0 ) {
+    cca=hal_register_read(RG_TRX_STATUS);
+  }
   
   if(radio_was_off) {
     rf230_off();
   }
-  return cca;
+  
+   if (cca & 0x70) return 1; else return 0;
 }
 /*---------------------------------------------------------------------------*/
 int

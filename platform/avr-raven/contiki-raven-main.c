@@ -76,7 +76,7 @@
 #include "raven-lcd.h"
 #endif
 
-#if WEBSERVER
+#if AVR_WEBSERVER
 #include "httpd-fs.h"
 #include "httpd-cgi.h"
 #endif
@@ -97,9 +97,9 @@
 #define TESTRTIMER 0
 #if TESTRTIMER
 //#define PINGS 64
-#define ROUTES 64
-#define STAMPS 30
-#define STACKMONITOR 128
+#define ROUTES 300
+#define STAMPS 60
+#define STACKMONITOR 600
 
 uint8_t rtimerflag=1;
 uint16_t rtime;
@@ -125,7 +125,7 @@ FUSES ={.low = 0xe2, .high = 0x99, .extended = 0xff,};
 /* Use existing EEPROM if it passes the integrity test, else reinitialize with build values */
 
 /* Put default MAC address in EEPROM */
-#if WEBSERVER
+#if AVR_WEBSERVER
 extern uint8_t mac_address[8];     //These are defined in httpd-fsdata.c via makefsdata.h
 extern uint8_t server_name[16];
 extern uint8_t domain_name[30];
@@ -340,7 +340,7 @@ uint8_t i;
 /*--------------------------Announce the configuration---------------------*/
 #if ANNOUNCE_BOOT
 
-#if WEBSERVER
+#if AVR_WEBSERVER
   uint8_t i;
   char buf[80];
   unsigned int size;
@@ -381,7 +381,7 @@ uint8_t i;
 
 #else
    PRINTF("Online\n");
-#endif /* WEBSERVER */
+#endif /* AVR_WEBSERVER */
 
 #endif /* ANNOUNCE_BOOT */
 }
@@ -444,10 +444,9 @@ main(void)
 #endif
 
 #if TESTRTIMER
-/* Timeout can be increased up to 8 seconds maximum.
+/* Timeout can be increased up to 8 seconds maximum (at 8MHz with 1024 prescaler)
  * A one second cycle is convenient for triggering the various debug printouts.
  * The triggers are staggered to avoid printing everything at once.
- * My raven is 6% slow.
  */
     if (rtimerflag) {
       rtimer_set(&rt, RTIMER_NOW()+ RTIMER_ARCH_SECOND*1UL, 1,(void *) rtimercycle, NULL);

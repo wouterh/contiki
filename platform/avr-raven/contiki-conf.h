@@ -68,15 +68,21 @@ unsigned long clock_seconds(void);
 #define INFINITE_TIME 0xffff
 
 /* Clock ticks per second */
-#define CLOCK_CONF_SECOND 125
+#define CLOCK_CONF_SECOND 128
 
-/* Maximum tick interval is 0xffff/125 = 524 seconds */
-#define RIME_CONF_BROADCAST_ANNOUNCEMENT_MAX_TIME CLOCK_CONF_SECOND * 524UL /* Default uses 600UL */
-#define COLLECT_CONF_BROADCAST_ANNOUNCEMENT_MAX_TIME CLOCK_CONF_SECOND * 524UL /* Default uses 600UL */
+/* Maximum tick interval is 0xffff/128 = 511 seconds */
+#define RIME_CONF_BROADCAST_ANNOUNCEMENT_MAX_TIME INFINITE_TIME/CLOCK_CONF_SECOND /* Default uses 600 */
+#define COLLECT_CONF_BROADCAST_ANNOUNCEMENT_MAX_TIME INFINITE_TIME/CLOCK_CONF_SECOND /* Default uses 600 */
 
 /* The 1284p can use TIMER2 with the external 32768Hz crystal to keep time. Else TIMER0 is used. */
 /* The sleep timer in raven-lcd.c also uses the crystal and adds a TIMER2 interrupt routine if not already define by clock.c */
-#define AVR_CONF_USE32KCRYSTAL 0
+#define AVR_CONF_USE32KCRYSTAL 1
+
+/* Rtimer is implemented through the 16 bit Timer1, clocked at F_CPU through a 1024 prescaler. */
+/* This gives 7812 counts per second, 128 microsecond precision and maximum interval 8.388 seconds. */
+/* Change clock source and prescaler for greater precision and shorter maximum interval. */
+/* 0 will disable the Rtimer code */
+//#define RTIMER_ARCH_PRESCALER 256UL /*0, 1, 8, 64, 256, 1024 */
 
 /* COM port to be used for SLIP connection. Not tested on Raven */
 #define SLIP_PORT RS232_PORT_0
@@ -87,6 +93,9 @@ unsigned long clock_seconds(void);
 
 /* Starting address for code received via the codeprop facility. Not tested on Raven */
 //#define EEPROMFS_ADDR_CODEPROP 0x8000
+
+/* RADIOSTATS is used in rf230bb, clock.c and the webserver cgi to report radio usage */
+#define RADIOSTATS 1
 
 /* Network setup. The new NETSTACK interface requires RF230BB (as does ip4) */
 #if RF230BB
@@ -260,5 +269,11 @@ unsigned long clock_seconds(void);
 
 #define CCIF
 #define CLIF
+
+/* include the project config */
+/* PROJECT_CONF_H might be defined in the project Makefile */
+#ifdef PROJECT_CONF_H
+#include PROJECT_CONF_H
+#endif /* PROJECT_CONF_H */
 
 #endif /* __CONTIKI_CONF_H__ */
